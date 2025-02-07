@@ -13,6 +13,9 @@ def start(host, port):
             message = message.encode("utf-8")
             s.sendall(message)
             data = s.recv(1024)
+            if not data:
+                print("Connection closed by the server.")
+                return
             data = data.decode("utf-8")
             print(f"Received: {data}")
 

@@ -2,26 +2,35 @@
 import os
 import socket
 import sys
+from pathlib import Path
+import csv
+
+PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
 
 # Tools
+'''
+Given an inputted username, if the username exists, return [True, password_hash]
+Otherwise, return [False, None]
+'''
+def traverse_passwords(command: str, username : str, password: str) -> tuple[bool, str]:
+    data = []
+    with open(PASSWORD_FILE, mode='r', newline='') as file:
+        csv_data = csv.reader(file)
+        for row in csv_data:
+            data.append(row)
 
-def convert_word(word):
-    vowels = "aeiou"
-    if word[0].lower() in vowels:
-        return word + "yay"
-    else:
-        for i, letter in enumerate(word):
-            if letter.lower() in vowels:
-                return word[i:] + word[:i] + "ay"
-        return word + "ay"  # In case there are no vowels
-
-def trans_to_pig_latin(words):
-    pig_latin_words = [convert_word(word) for word in words]
-    return " ".join(pig_latin_words)
+    for row in data:
+        if row[0] == username:
+            if command == "username":
+                return (True, row[1])
+            else:
+                return (password == row[1], username)
+    return False, None   
 
 # Handle the client
-def client(connection, address):
+def login_process(connection, address):
     """Handle client connection: receive commands and send responses."""
+    username = ""
     try:
         print(f"Child {os.getpid()} handling connection from {address}")
         while True:
@@ -32,11 +41,22 @@ def client(connection, address):
             words = data.decode("utf-8").split()
             if not words:
                 continue  # Skip if no data
-            if words[0] == "count":
-                # Count the remaining words.
-                response = str(len(words) - 1)
-            elif words[0] == "translate":
-                response = trans_to_pig_latin(words[1:])
+            elif words[0] == "username":
+                exists, _password = traverse_passwords("username", words[1], None)
+                if exists:
+                    username = words[1]
+                    response = "Enter password"
+                else:
+                    response = "No such user"
+            elif words[0] == "password":
+                if not username:
+                    response = "enter username"
+                else:
+                    correct, username = traverse_passwords("password", username, words[1])
+                    if correct:
+                        response = "logged in"
+                    else:
+                        response = f"Wrong password for {username}"
             else:
                 response = "Unknown command"
             connection.sendall(response.encode("utf-8"))
@@ -63,7 +83,7 @@ def main(host, port):
             pid = os.fork()
             if pid == 0: # Child
                 listen_socket.close()  # Close listening socket
-                client(client_connection, addr)
+                login_process(client_connection, addr)
             else: # Parent
                 client_connection.close()  # Close the client socket
                 try:

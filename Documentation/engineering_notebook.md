@@ -1,0 +1,120 @@
+# Engineering Notebook
+
+## Contents
+- Initial Planning
+
+## Initial Plan Draft:
+We split the initial plan down into a couple modularized and separate implementations. This will ensure that each portion can be changed with minimal impact on other components, as well increase our ability to remain organized.
+
+### Key Components:
+- File organization
+- Client-Server communication setup
+- Logins
+- Standardized object for information transfer
+- Handling and displaying messages
+- Account Deletion
+
+### File Organization:
+- one folder containing a file with username-password pairs (not plaintext passwords, of course)
+- one folder with sub-folders for each user
+    - each user's folder should contain:
+        - a folder with serialized message objects for messages sent to them, one object per file
+        - a file containing a list of message paths for messages that have been sent by the user
+        - a file containing a list of the messages sent to the user, alongside status (delivered or not)
+
+### Client-Server communication setup:
+Client specifications:
+- The client, upon launch, should attempt to connect to the server
+- If successful, the client can switch to the "handling and displaying messages" component
+
+Server specifications:
+- The server should run a Daemon process to handle incoming connections
+- Upon connection, the server should fork a child to handle logins
+- The login child, upon sucess can switch to a user child that will handle client requests on the server, etc.
+- We will need some communication framework to allow the user child to communicate with other processes for deleting users
+    - Can have a separate process manage deleting users
+- It will be important to ensure proper locking of files (perhaps file-level granularity) to prevent race conditions
+    - Will need some sort of global variable/object for locking files for writes, and a separate global variable for locking the gobal variable/object
+    - Could do user-folder-level granularity for simplicity
+    - The global object can also contain a new-messages counter to indicate it has been written to
+- The process of having children will ensure the server can handle multiple clients
+
+Bonus features:
+- The layers of children will allow for chrooting to restrict access to sensitive files
+
+### Logins:
+Specifications:
+- The login should be handled on the server end by a special login process that will send a message asking for the user's login info
+- The usernames should be stored in plaintext, and the passwords a hashed version of the user's password
+- The passwords file should be a csv with username, hashed_password on each line
+
+Login steps:
+- The client will start the connection, but the login process will initiate communication, asking for a username
+- The client prompts the user for a username
+- The login process recieves the username and checks for the username
+- If the username exists:
+    - The login process saves the hashed password to a variable
+    - The login process prompts the client to fetch the password
+    - The password is sent, encrypted with a constant string or with the user's username as the symmetric key
+    - The login process confirms the password by hashing it and comparing against the variable
+    - If fails, then tell the client, otherwise, inform the client of success and fork a user child
+- If the username does not exist:
+    - The login process asks the user to create a password
+    - The password is sent, encrypted with a constant string or with the user's username as the symmetric key
+    - The login process locks the password file and writes the username-hashed-password pair to the file
+    - The login process adds the user's folder, and adds it to the global object for locking files
+    - Then for a user child like normal
+
+Bonus features:
+- Timeout's can be implemented on both ends: the client closes connection if it does not hear the login process send a message, and the login process kills itself if no login attempt occurs within 60 seconds
+- Encrypt the entire passwords file
+- Negotiate (via Diffie-hellman) a symetric key for encrypting messages, passing the negotiated key to the serialize method.
+
+### Standardized Objects for information transfer
+Specification:
+- Type field, with possible values "System", "Login", "Message"
+- Data field:
+    - System
+        - Used to confirm switch to login or child process, have a keyword string to confirm, or the word failed
+        - Used to tell the client whether to get the password or ask for a new password (depending on whether the user is logging in or creating an account)
+    
+    - Login
+        - used to send the username or password to the login process
+        - contains a type (username/password) and the value
+    
+    - Message
+        - used to send a message
+        - Contains sender, recipient, time sent, subject, and message
+- Implement a custom and a json serializer/deserializer as a stand-alone function
+    - could contain a flag on type (ie json or custom) so the serializer/deserializer can handle either
+
+### Handling and displaying messages
+Sending:
+- The client populates the message object, serializes it and sends it to the user process on the server
+- The user process deserializes the message and extracts sender, reciever and send time
+- The user process recieves the serialized object, and turns it into a file
+    - The file should have a name consisting of the sender, recipient and send time to be uniquely named
+- The user process confirms the recipient exists, if not, then it changes the recipient to the sender, adding a note on how the send failed
+- The user process confirms the sender exists. If not, then something has really gone wrong, and the user process shoudl send a fatal error message to the client, and kill itself
+- The user process locks the recipient folder, and adds the message in, then adds the message as an undelivered message to list of messages file, incrementing the new_message counter
+- The user process locks the sender folder and adds the sent message path to the list of sent messages
+- The user process sends a confirmation to the client
+
+Receiving:
+- The user process, upon logging in, serializes all the appropriate messages and sends it to the client by refering to the list of recieved messages
+- The user process periodically checks the new_message counter. If it is non-zero, the process locks the folder and sends the new messages to the client, decrementing the new_message counter
+
+Deleting messages:
+- The user process locks the user's folder, deleting the message files, and removing their entries from the list of recieved messages
+- The user process goes through all the sender's folders, locking them, and deleting the message from the list of sent messages
+
+Deleting accounts:
+- The client process freezes when the deletion begins
+- The user process goes through all undelivered, recieved messages, changing the recipent to the sender, adding a note that the account was deleted before the message could be delivered, and follow the sending process
+- The user process looks at the list of sent messages, and goes through all the recipient folders, locking them, and deleting the messages, as well as updating the entries to the recieved messages list
+- The user process locks and deletes the user's folder
+- The user process sends a confirmation to the client, which switches to the login page
+- The user process kills itself
+
+Notes:
+- There may be some race conditions with deleting files and folders, if another client is attempting to read from them, or access the files. Thus we will need to think about whether or not we want to lock reading as well for deletion, in which case we will want to implement a reader-count (itself needing a lock), and a read lock (that would need to wait until reader-count = 0, and new processes cannot read when read lock is locked)

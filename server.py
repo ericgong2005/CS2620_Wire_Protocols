@@ -1,11 +1,9 @@
+#!/usr/bin/env python3
+import os
 import socket
-import selectors
-import types
 import sys
 
-# run python server.py HOSTNAME PORTNAME
-
-sel = selectors.DefaultSelector()
+# --- Pig Latin conversion functions ---
 
 def convert_word(word):
     vowels = "aeiou"
@@ -21,60 +19,78 @@ def trans_to_pig_latin(words):
     pig_latin_words = [convert_word(word) for word in words]
     return " ".join(pig_latin_words)
 
-def accept_wrapper(sock):
-    conn, addr = sock.accept()
-    print(f"Accepted connection from {addr}")
-    conn.setblocking(False)
-    data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"")
-    events = selectors.EVENT_READ | selectors.EVENT_WRITE
-    sel.register(conn, events, data=data)
+# --- Client handler function ---
 
-def service_connection(key, mask):
-    sock = key.fileobj
-    data = key.data
-    if mask & selectors.EVENT_READ:
-        recv_data = sock.recv(1024)
-        if recv_data:
-            data.outb += recv_data
-        else:
-            print(f"Closing connection to {data.addr}")
-            sel.unregister(sock)
-            sock.close()
-    if mask & selectors.EVENT_WRITE:
-        if data.outb:
-            words = data.outb.decode("utf-8").split()
+def handle_client(conn, addr):
+    """Handle client connection: receive commands and send responses."""
+    try:
+        print(f"Child {os.getpid()} handling connection from {addr}")
+        while True:
+            data = conn.recv(1024)
+            if not data:
+                break  # Connection closed by client
+            words = data.decode("utf-8").split()
+            if not words:
+                continue  # Skip if no data
             if words[0] == "count":
-                return_data = str((len(words)-1)).encode("utf-8")
+                # Count the remaining words.
+                response = str(len(words) - 1)
             elif words[0] == "translate":
-                return_data = trans_to_pig_latin(words[1:])
-                return_data = return_data.encode("utf-8")
+                response = trans_to_pig_latin(words[1:])
             else:
-                print ("No valid command")
-                return_data = "Unknown command".encode("utf-8")
-            sent = sock.send(return_data)
-            data.outb = data.outb[sent:]
+                response = "Unknown command"
+            conn.sendall(response.encode("utf-8"))
+    except Exception as e:
+        print(f"Error in child {os.getpid()}:", e)
+    finally:
+        conn.close()
+        print(f"Child {os.getpid()} closing connection from {addr}")
+        # Ensure the child process exits.
+        os._exit(0)
+
+def main(host, port):
+
+    # Create the listening socket.
+    lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    lsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    lsock.bind((host, port))
+    lsock.listen(5)
+    print(f"Daemon listening on {(host, port)}")
+
+    while True:
+        try:
+            conn, addr = lsock.accept()
+            # Fork a child process to handle this connection.
+            pid = os.fork()
+            if pid == 0:
+                # In the child process.
+                lsock.close()  # Close listening socket inherited from parent.
+                handle_client(conn, addr)
+            else:
+                # In the parent process.
+                conn.close()  # Close the connected socket (child handles it).
+                # Optionally, reap any zombie children.
+                try:
+                    while True:
+                        # Wait for any child process that has terminated.
+                        finished_pid, _ = os.waitpid(-1, os.WNOHANG)
+                        if finished_pid == 0:
+                            break  # No more zombies.
+                except ChildProcessError:
+                    # No child processes.
+                    pass
+        except KeyboardInterrupt:
+            print("Daemon shutting down (KeyboardInterrupt)")
+            break
+        except Exception as e:
+            print("Error accepting connections:", e)
+
+    lsock.close()
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python server.py HOSTNAME PORTNAME")
-        exit(1)
+        print("Usage: python server.py HOST PORT")
+        sys.exit(1)
     host = sys.argv[1]
     port = int(sys.argv[2])
-    lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsock.bind((host, port))
-    lsock.listen()
-    print("Listening on", (host, port))
-    lsock.setblocking(False)
-    sel.register(lsock, selectors.EVENT_READ, data=None)
-    try:
-        while True:
-            events = sel.select(timeout=None)
-            for key, mask in events:
-                if key.data is None:
-                    accept_wrapper(key.fileobj)
-                else:
-                    service_connection(key, mask)
-    except KeyboardInterrupt:
-        print("Caught keyboard interrupt, exiting")
-    finally:
-        sel.close()
+    main(host, port)

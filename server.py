@@ -3,6 +3,8 @@ import selectors
 import types
 import sys
 
+# run python server.py HOSTNAME PORTNAME
+
 sel = selectors.DefaultSelector()
 
 def convert_word(word):

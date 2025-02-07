@@ -1,7 +1,7 @@
 import socket
 import sys
 
-# run python client.py 
+# run python client.py HOSTNAME PORTNAME
 
 def start(host, port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

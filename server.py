@@ -1,21 +1,9 @@
-#!/usr/bin/evn python3
-# -*- coding: utf-8 -*-
-"""
-Created on 1/30/25
-
-@author waldo
-
-"""
-
 import socket
 import selectors
 import types
+import sys
 
 sel = selectors.DefaultSelector()
-
-HOST = "127.0.0.1"
-PORT = 54400
-
 
 def convert_word(word):
     vowels = "aeiou"
@@ -65,10 +53,15 @@ def service_connection(key, mask):
             data.outb = data.outb[sent:]
 
 if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python server.py HOSTNAME PORTNAME")
+        exit(1)
+    host = sys.argv[1]
+    port = sys.argv[2]
     lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsock.bind((HOST, PORT))
+    lsock.bind((host, port))
     lsock.listen()
-    print("Listening on", (HOST, PORT))
+    print("Listening on", (host, port))
     lsock.setblocking(False)
     sel.register(lsock, selectors.EVENT_READ, data=None)
     try:

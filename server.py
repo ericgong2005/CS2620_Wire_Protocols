@@ -3,7 +3,7 @@ import os
 import socket
 import sys
 
-# --- Pig Latin conversion functions ---
+# Tools
 
 def convert_word(word):
     vowels = "aeiou"
@@ -19,14 +19,14 @@ def trans_to_pig_latin(words):
     pig_latin_words = [convert_word(word) for word in words]
     return " ".join(pig_latin_words)
 
-# --- Client handler function ---
-
-def handle_client(conn, addr):
+# Handle the client
+def client(connection, address):
     """Handle client connection: receive commands and send responses."""
     try:
-        print(f"Child {os.getpid()} handling connection from {addr}")
+        print(f"Child {os.getpid()} handling connection from {address}")
         while True:
-            data = conn.recv(1024)
+            data = connection.recv(1024)
+            print(f"Child {os.getpid()} got data {data}")
             if not data:
                 break  # Connection closed by client
             words = data.decode("utf-8").split()
@@ -39,45 +39,40 @@ def handle_client(conn, addr):
                 response = trans_to_pig_latin(words[1:])
             else:
                 response = "Unknown command"
-            conn.sendall(response.encode("utf-8"))
+            connection.sendall(response.encode("utf-8"))
     except Exception as e:
         print(f"Error in child {os.getpid()}:", e)
     finally:
-        conn.close()
-        print(f"Child {os.getpid()} closing connection from {addr}")
-        # Ensure the child process exits.
+        connection.close()
+        print(f"Child {os.getpid()} closing connection from {address}")
         os._exit(0)
 
 def main(host, port):
 
     # Create the listening socket.
-    lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    lsock.bind((host, port))
-    lsock.listen(5)
+    listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listen_socket.bind((host, port))
+    listen_socket.listen(5)
     print(f"Daemon listening on {(host, port)}")
 
     while True:
         try:
-            conn, addr = lsock.accept()
-            # Fork a child process to handle this connection.
+            client_connection, addr = listen_socket.accept()
+            # Fork a child process to handle client connections
             pid = os.fork()
-            if pid == 0:
-                # In the child process.
-                lsock.close()  # Close listening socket inherited from parent.
-                handle_client(conn, addr)
-            else:
-                # In the parent process.
-                conn.close()  # Close the connected socket (child handles it).
-                # Optionally, reap any zombie children.
+            if pid == 0: # Child
+                listen_socket.close()  # Close listening socket
+                client(client_connection, addr)
+            else: # Parent
+                client_connection.close()  # Close the client socket
                 try:
                     while True:
                         # Wait for any child process that has terminated.
                         finished_pid, _ = os.waitpid(-1, os.WNOHANG)
                         if finished_pid == 0:
-                            break  # No more zombies.
+                            break
                 except ChildProcessError:
-                    # No child processes.
                     pass
         except KeyboardInterrupt:
             print("Daemon shutting down (KeyboardInterrupt)")
@@ -85,7 +80,7 @@ def main(host, port):
         except Exception as e:
             print("Error accepting connections:", e)
 
-    lsock.close()
+    listen_socket.close()
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:

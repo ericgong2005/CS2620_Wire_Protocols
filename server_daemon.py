@@ -9,23 +9,18 @@ PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
 
 # Tools
 '''
-Given an inputted username, if the username exists, return [True, password_hash]
-Otherwise, return [False, None]
+traverse_passwords checks for the existence of a username or a username-password pair
+Will return an int flag:
+-1: username not found
+0 : username found, but password does not match
+1 : username/password both match
 '''
-def traverse_passwords(command: str, username : str, password: str) -> tuple[bool, str]:
-    data = []
+def traverse_passwords(username : str, password: str) -> int:
     with open(PASSWORD_FILE, mode='r', newline='') as file:
         csv_data = csv.reader(file)
         for row in csv_data:
-            data.append(row)
-
-    for row in data:
-        if row[0] == username:
-            if command == "username":
-                return (True, row[1])
-            else:
-                return (password == row[1], username)
-    return False, None   
+            if row[0] == username:
+                return (1 if row[1] == password else 0)
 
 # Handle the client
 def login_process(connection, address):
@@ -42,18 +37,16 @@ def login_process(connection, address):
             if not words:
                 continue  # Skip if no data
             elif words[0] == "username":
-                exists, _password = traverse_passwords("username", words[1], None)
-                if exists:
+                if traverse_passwords(words[1], None) != -1 :
                     username = words[1]
-                    response = "Enter password"
+                    response = f"Enter password for {username}"
                 else:
                     response = "No such user"
             elif words[0] == "password":
                 if not username:
                     response = "enter username"
                 else:
-                    correct, username = traverse_passwords("password", username, words[1])
-                    if correct:
+                    if traverse_passwords(username, words[1]) == 1:
                         response = "logged in"
                     else:
                         response = f"Wrong password for {username}"
@@ -67,22 +60,20 @@ def login_process(connection, address):
         print(f"Child {os.getpid()} closing connection from {address}")
         os._exit(0)
 
-def main(host, port):
-
-    # Create the listening socket.
-    listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    listen_socket.bind((host, port))
-    listen_socket.listen(5)
+def main(host : str, port : int):
+    connect_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    connect_request.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    connect_request.bind((host, port))
+    connect_request.listen(5)
     print(f"Daemon listening on {(host, port)}")
 
     while True:
         try:
-            client_connection, addr = listen_socket.accept()
+            client_connection, addr = connect_request.accept()
             # Fork a child process to handle client connections
             pid = os.fork()
             if pid == 0: # Child
-                listen_socket.close()  # Close listening socket
+                connect_request.close()  # Close listening socket
                 login_process(client_connection, addr)
             else: # Parent
                 client_connection.close()  # Close the client socket
@@ -100,12 +91,10 @@ def main(host, port):
         except Exception as e:
             print("Error accepting connections:", e)
 
-    listen_socket.close()
+    connect_request.close()
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python server.py HOST PORT")
+        print("Usage: python server.py HOSTNAME PORTNAME")
         sys.exit(1)
-    host = sys.argv[1]
-    port = int(sys.argv[2])
-    main(host, port)
+    main(sys.argv[1], int(sys.argv[2]))

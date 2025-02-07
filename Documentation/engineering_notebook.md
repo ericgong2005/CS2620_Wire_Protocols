@@ -31,8 +31,6 @@ Server specifications:
 - The server should run a Daemon process to handle incoming connections
 - Upon connection, the server should fork a child to handle logins
 - The login child, upon sucess can switch to a user child that will handle client requests on the server, etc.
-- We will need some communication framework to allow the user child to communicate with other processes for deleting users
-    - Can have a separate process manage deleting users
 - It will be important to ensure proper locking of files (perhaps file-level granularity) to prevent race conditions
     - Will need some sort of global variable/object for locking files for writes, and a separate global variable for locking the gobal variable/object
     - Could do user-folder-level granularity for simplicity

@@ -3,6 +3,7 @@
 ## Contents
 - Planning
 - Changes
+- Version logs
 
 
 ## Planning
@@ -125,3 +126,12 @@ A log of changes, ideas and observations to the plan
 - Decided to use multithreading to modularize the code and have each user be a separate process
 - Use the multiprocessing python library over os.form to ensure support outside of UNIX
     - Want to use forkserve, but may not be supported on windows, so spawn is used (fork may causes crashes, according to the [documentation](https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing))
+
+
+## Version Logs
+- Version1:
+    - Version1 client and server_daemon contain a base framework for logging in
+    - Daemon unaffected by login_process and user_process errors
+    - Multiple users can connect at once
+    - No rigorous testing yet, only tried via terminal
+    - Does not support the creation of new users

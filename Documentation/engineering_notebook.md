@@ -1,10 +1,12 @@
 # Engineering Notebook
 
 ## Contents
-- Initial Planning
+- Planning
+- Changes
 
-## Initial Plan Draft:
-We split the initial plan down into a couple modularized and separate implementations. This will ensure that each portion can be changed with minimal impact on other components, as well increase our ability to remain organized.
+
+## Planning
+We split the plan down into a couple modularized and separate implementations. This will ensure that each portion can be changed with minimal impact on other components, as well increase our ability to remain organized.
 
 ### Key Components:
 - File organization
@@ -116,3 +118,10 @@ Deleting accounts:
 
 Notes:
 - There may be some race conditions with deleting files and folders, if another client is attempting to read from them, or access the files. Thus we will need to think about whether or not we want to lock reading as well for deletion, in which case we will want to implement a reader-count (itself needing a lock), and a read lock (that would need to wait until reader-count = 0, and new processes cannot read when read lock is locked)
+
+## Changes
+A log of changes, ideas and observations to the plan
+
+- Decided to use multithreading to modularize the code and have each user be a separate process
+- Use the multiprocessing python library over os.form to ensure support outside of UNIX
+    - Want to use forkserve, but may not be supported on windows, so spawn is used (fork may causes crashes, according to the [documentation](https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing))

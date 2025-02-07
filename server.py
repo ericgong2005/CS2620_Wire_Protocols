@@ -59,7 +59,7 @@ if __name__ == "__main__":
         print("Usage: python server.py HOSTNAME PORTNAME")
         exit(1)
     host = sys.argv[1]
-    port = sys.argv[2]
+    port = int(sys.argv[2])
     lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     lsock.bind((host, port))
     lsock.listen()

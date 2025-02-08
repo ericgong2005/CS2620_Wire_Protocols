@@ -204,7 +204,7 @@ Bonus features:
 
 ### Standardized Objects for information transfer
 Specification:
-- Type field, with possible values "System", "Login", "Message"
+- Operation field, with possible values "Version", "System", "Login", "Message"
 - Data field:
     - System
         - Used to confirm switch to login or child process, have a keyword string to confirm, or the word failed

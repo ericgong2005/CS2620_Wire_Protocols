@@ -61,18 +61,21 @@ class DatabaseManager:
         result = self.passwords_cursor.fetchone()
         return result[0] if result else Status.NOT_FOUND
     
-    def delete_database(self) -> Status:
+    def empty_table(self) -> Status:
         try:
-            self.passwords_cursor.execute("DROP TABLE IF EXISTS Passwords")
+            self.passwords_cursor.execute("DELETE FROM Passwords")
             self.passwords.commit()
             return Status.SUCCESS
         except sqlite3.Error:
             return Status.ERROR
     
     def output(self) -> list[list[str]] | Status:
-        self.passwords_cursor.execute("SELECT * FROM Passwords")
+        try:
+            self.passwords_cursor.execute("SELECT * FROM Passwords")
+        except sqlite3.OperationalError:
+            return Status.ERROR
         rows = self.passwords_cursor.fetchall()
-        return rows if rows else Status.ERROR
+        return rows if rows else Status.NOT_FOUND
 
 
 

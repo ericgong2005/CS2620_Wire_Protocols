@@ -6,6 +6,8 @@ from pathlib import Path
 import csv
 import multiprocessing as mp
 
+from Modules.database_manager import DatabaseManager
+
 PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
 
 def user_process(connection, address, user_start, username) :

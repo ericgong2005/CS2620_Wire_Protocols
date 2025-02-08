@@ -10,7 +10,7 @@ from Modules.constants import DB, Status
 
 PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
 
-def database_proccess(database_queue, host, database_port):
+def database_proccess(database_queue):
     """
     Handle all requests to the database
     """
@@ -203,24 +203,25 @@ def login_process(connection, address, database_queue):
         print(f"Login process {os.getpid()} closing connection from {address}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Usage: python server.py HOSTNAME DAEMON_PORTNAME DATABASE_PORTNAME")
+    if len(sys.argv) != 3:
+        print("Usage: python server.py HOSTNAME PORTNAME")
         sys.exit(1)
-    host, daemon_port, database_port = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+    host, port = sys.argv[1], int(sys.argv[2])
 
     # Set the child creation type to spawn to support windows
     mp.set_start_method('spawn')
 
     # Set up the database process
     database_queue = mp.Queue()
-    database_process = mp.Process(target=database_proccess, args=(database_queue, host, database_port))
+    database_process = mp.Process(target=database_proccess, args=(database_queue,))
     database_process.start()
 
     # Set up socket to listen for connection requests
     connect_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    connect_request.bind((host, daemon_port))
+    connect_request.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    connect_request.bind((host, port))
     connect_request.listen(5)
-    print(f"Daemon listening on {(host, daemon_port)}")
+    print(f"Daemon listening on {(host, port)}")
 
     while True:
         try:

@@ -10,12 +10,18 @@ from Modules.constants import DB, Status
 
 PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
 
-def database_proccess(database_queue, host, database_port):
+def database_proccess(host, database_port):
     """
     Handle all requests to the database
     """
 
     print(f"Database process {os.getpid()} started")
+
+    connect_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    connect_request.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    connect_request.bind((host, database_port))
+    connect_request.listen(5)
+    print(f"Database listening on {(host, database_port)}")
 
     db = DatabaseManager()
 
@@ -212,8 +218,7 @@ if __name__ == "__main__":
     mp.set_start_method('spawn')
 
     # Set up the database process
-    database_queue = mp.Queue()
-    database_process = mp.Process(target=database_proccess, args=(database_queue, host, database_port))
+    database_process = mp.Process(target=database_proccess, args=(host, database_port))
     database_process.start()
 
     # Set up socket to listen for connection requests

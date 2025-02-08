@@ -54,12 +54,12 @@ class DatabaseManager:
         self.passwords.commit()
         return Status.SUCCESS
     
-    def get_password(self, username : str) -> Status | str:
+    def get_password(self, username : str) -> tuple[Status, str]:
         if not username:
-            return Status.INVALID_INPUT
+            return (Status.INVALID_INPUT, None)
         self.passwords_cursor.execute("SELECT Password FROM Passwords WHERE Username = ?", (username,))
         result = self.passwords_cursor.fetchone()
-        return result[0] if result else Status.NOT_FOUND
+        return (Status.SUCCESS, result[0]) if result else (Status.NOT_FOUND, None)
     
     def empty_table(self) -> Status:
         try:

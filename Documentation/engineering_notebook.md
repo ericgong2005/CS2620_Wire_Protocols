@@ -11,14 +11,21 @@
 We split the plan down into a couple modularized and separate implementations. This will ensure that each portion can be changed with minimal impact on other components, as well increase our ability to remain organized.
 
 ### Key Components:
-- File organization
+- Organization
+- Database
 - Client-Server communication setup
 - Logins
 - Standardized object for information transfer
 - Handling and displaying messages
 - Account Deletion
 
-### File Organization:
+### Organization
+- Put helper functions and constants and class definitions into the Modules folder, which interpreted as a package
+- Put tests into Tests folder, also a package
+- tests.py to run tests in the Test folder
+- server_daemon.py and client.py in the Code folder where Tests and Modules are located
+
+### Database:
 - access everything using SQLite on .db files
 - one passwords.db file with username-password pairs (not plaintext passwords, of course)
     - have entries for Username and hashed_password
@@ -26,6 +33,8 @@ We split the plan down into a couple modularized and separate implementations. T
     - have sender, reciever, time sent, delivered, subject, message
 - one users.db with usernames and maybe things like # of undelivered messages
 - have one process to query the database to prevent issues on concurrency
+- have a database class with the necessary functions
+- make sure that the database class contains \_\_exit\_\_ definitions so the .db doesn't get corrupted
 
 ### Client-Server communication setup:
 Client specifications:

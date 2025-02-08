@@ -8,7 +8,7 @@ import multiprocessing as mp
 
 PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
 
-def user_process(connection, address, user_start) :
+def user_process(connection, address, user_start, username) :
     """
     Handle client connection normal user activity
     """
@@ -79,7 +79,7 @@ def login_process(connection, address):
                 else:
                     if traverse_passwords(username, words[1]) == 1:
                         user_start =  mp.Event()
-                        client_user = mp.Process(target=user_process, args=(connection, address, user_start))
+                        client_user = mp.Process(target=user_process, args=(connection, address, user_start, username))
                         client_user.start()
                         user_start.wait()
                         response = "Logged In"

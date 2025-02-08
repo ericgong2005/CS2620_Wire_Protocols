@@ -3,9 +3,9 @@ import sys
 
 # run python client.py HOSTNAME PORTNAME
 
-def client_user(server_socket):
+def client_user(server_socket, username):
     while True:
-        message = input("Enter a message to send to the server: ")
+        message = input(f"Enter a message as User {username}: ")
         if message == "exit":
             break
         message = message.encode("utf-8")
@@ -48,7 +48,7 @@ def client_login(server_socket):
         print(f"Recieved {data}")
         if data == "Logged In":
             print("Logged In")
-            client_user(server_socket)
+            client_user(server_socket, username)
             break
         elif data == "Wrong Password":
             print("Wrong Password")

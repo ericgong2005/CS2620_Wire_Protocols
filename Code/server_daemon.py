@@ -10,7 +10,11 @@ from Modules.database_manager import DatabaseManager
 
 PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
 
-def user_process(connection, address, user_start, username) :
+def database_proccess(database_queue):
+    while True:
+        req = database_queue.get()
+
+def user_process(connection, address, database_queue, user_start, username) :
     """
     Handle client connection normal user activity
     """
@@ -51,10 +55,13 @@ def traverse_passwords(username : str, password: str) -> int:
                 return (1 if row[1] == password else 0)
     return -1
 
-def login_process(connection, address):
+def login_process(connection, address, database_queue):
     """
     Handle client connection login
     """
+    login_end, database_end = mp.Pipe()
+    request = {"type" : "Establish"}
+
     username = ""
     try:
         print(f"Login process {os.getpid()} handling connection from {address}")
@@ -81,7 +88,7 @@ def login_process(connection, address):
                 else:
                     if traverse_passwords(username, words[1]) == 1:
                         user_start =  mp.Event()
-                        client_user = mp.Process(target=user_process, args=(connection, address, user_start, username))
+                        client_user = mp.Process(target=user_process, args=(connection, address, database_queue, user_start, username))
                         client_user.start()
                         user_start.wait()
                         response = "Logged In"
@@ -106,7 +113,12 @@ if __name__ == "__main__":
 
     # Set the child creation type to spawn to support windows
     mp.set_start_method('spawn')
-    
+
+    # Set up the database process
+    database_queue = mp.Queue()
+    database_process = mp.Process(target=database_proccess, args=(database_queue,))
+    database_process.start()
+
     # Set up socket to listen for connection requests
     connect_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     connect_request.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -119,7 +131,7 @@ if __name__ == "__main__":
             client_connection, address = connect_request.accept()
 
             # Fork a child process to handle client login
-            client_login = mp.Process(target=login_process, args=(client_connection, address,))
+            client_login = mp.Process(target=login_process, args=(client_connection, address, database_queue))
             client_login.start()
 
             # Close client connection on daemon end

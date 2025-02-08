@@ -23,28 +23,34 @@ def database_proccess(database_queue):
     db.insert_user("a", "b")
     db.insert_user("abcd", "1234")
 
-    user_dict = {}
+    online = {}
 
     while True:
         request = database_queue.get()
         print(f"Database recieved Request {request.to_string()}")
         if request.request == DB.LOGIN:
-            if request.username in user_dict:
+            if request.username in online:
                 request.pipe.send(Status.DUPLICATE)
             else:
-                user_dict[request.username] = (request.pid, request.pipe)
+                online[request.username] = (request.pid, request.pipe)
                 request.pipe.send(Status.SUCCESS)
         elif request.request == DB.LOGOUT:
-            if request.username in user_dict:
-                del user_dict[request.username]
+            if request.username in online:
+                del online[request.username]
         elif request.request == DB.CURRENT_USERS:
-            request.pipe.send((Status.SUCCESS, list(user_dict.keys())))
+            request.pipe.send((Status.SUCCESS, list(online.keys())))
+        elif request.request == DB.NOTIFY:
+            target = request.data[0]
+            if target in online:
+                request.pipe.send((Status.SUCCESS, None))
+            else:
+                request.pipe.send((Status.FAIL, None))
         else:
             try:
                 request.pipe.send(db.handler(request)) 
                 print(f"Database answered {request.to_string()}")
             except Exception as e:
-                del user_dict[request.username]
+                del online[request.username]
                 print("Database failed to answer request due to", e)
 
 def user_process(connection, address, database_queue, user_start, username) :
@@ -79,8 +85,8 @@ def user_process(connection, address, database_queue, user_start, username) :
             if not data:
                 break  
 
-            data = data.decode("utf-8")
-            if data == "Get Users":
+            words = data.decode("utf-8").split()
+            if words[0] == "get":
                 request = QueryObject(DB.CURRENT_USERS, username, None, database_end, os.getpid())
                 database_queue.put(request)
                 status, users = user_end.recv()
@@ -88,6 +94,14 @@ def user_process(connection, address, database_queue, user_start, username) :
                     response = f"Users: {users}"
                 else:
                     response = "Failed to Retrieve Active Users"
+            elif words[0] == "ping":
+                request = QueryObject(DB.NOTIFY, username, [words[1]], database_end, os.getpid())
+                database_queue.put(request)
+                status, users = user_end.recv()
+                if(status == Status.SUCCESS):
+                    response = "Ping Sent"
+                else:
+                    response = "Failed to Send Ping"
             else:
                 response = f"Success: {data}"
 

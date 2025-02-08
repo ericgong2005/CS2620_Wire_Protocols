@@ -15,3 +15,4 @@ class DB(Enum):
     LOGIN = 3
     LOGOUT = 4
     CURRENT_USERS = 5
+    NOTIFY = 6

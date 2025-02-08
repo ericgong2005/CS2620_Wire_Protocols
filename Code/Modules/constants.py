@@ -6,3 +6,5 @@ class Status(Enum):
     INVALID_INPUT = 1
     NOT_FOUND = 2
 
+class DB(Enum):
+    GET_PASSWORD = 0

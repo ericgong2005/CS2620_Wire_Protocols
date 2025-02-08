@@ -7,10 +7,29 @@ import csv
 import multiprocessing as mp
 
 from Modules.database_manager import DatabaseManager
+from Modules.constants import DB, Status
 
 PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
 
-def user_process(connection, address, user_start, username) :
+def database_proccess(database_queue):
+    print(f"Database process {os.getpid()} started")
+
+    db = DatabaseManager()
+
+    # Add some fake users in case the db is empty
+    db.insert_user("a", "b")
+    db.insert_user("abcd", "1234")
+
+    while True:
+        request = database_queue.get()
+        print(f"Database recieved Request {request}")
+        if request["type"] == DB.GET_PASSWORD:
+            request["return"].send(db.get_password(request["data"]))
+        else:
+            request["return"].send((Status.INVALID_INPUT, None))   
+        request["return"].close()
+
+def user_process(connection, address, database_queue, user_start, username) :
     """
     Handle client connection normal user activity
     """
@@ -36,28 +55,16 @@ def user_process(connection, address, user_start, username) :
         connection.close()
         print(f"User process {os.getpid()} closing connection from {address}")
 
-def traverse_passwords(username : str, password: str) -> int:
-    """
-    traverse_passwords checks for the existence of a username or a username-password pair
-    Will return an int flag:
-    -1: username not found
-    0 : username found, but password does not match
-    1 : username/password both match
-    """
-    with open(PASSWORD_FILE, mode='r', newline='') as file:
-        csv_data = csv.reader(file)
-        for row in csv_data:
-            if row[0] == username:
-                return (1 if row[1] == password else 0)
-    return -1
-
-def login_process(connection, address):
+def login_process(connection, address, database_queue):
     """
     Handle client connection login
     """
+
     username = ""
+    password = ""
     try:
         print(f"Login process {os.getpid()} handling connection from {address}")
+
         while True:
             data = connection.recv(1024)
             print(f"Login process {os.getpid()} got data {data}")
@@ -70,18 +77,25 @@ def login_process(connection, address):
             if not words:
                 continue
             elif words[0] == "username":
-                if traverse_passwords(words[1], None) != -1 :
+                login_end, database_end = mp.Pipe()
+                request = {"type" : DB.GET_PASSWORD, "data": words[1], "return" : database_end}
+                database_queue.put(request)
+                status, result = login_end.recv()
+                print(f"Login Process Recieved {status} {result}")
+                if status == Status.SUCCESS:
                     username = words[1]
+                    password = result
                     response = "Enter Password"
                 else:
                     response = "No User"
+                login_end.close()
             elif words[0] == "password":
                 if not username:
                     response = "Enter Username"
                 else:
-                    if traverse_passwords(username, words[1]) == 1:
+                    if password == words[1]:
                         user_start =  mp.Event()
-                        client_user = mp.Process(target=user_process, args=(connection, address, user_start, username))
+                        client_user = mp.Process(target=user_process, args=(connection, address, database_queue, user_start, username))
                         client_user.start()
                         user_start.wait()
                         response = "Logged In"
@@ -106,7 +120,12 @@ if __name__ == "__main__":
 
     # Set the child creation type to spawn to support windows
     mp.set_start_method('spawn')
-    
+
+    # Set up the database process
+    database_queue = mp.Queue()
+    database_process = mp.Process(target=database_proccess, args=(database_queue,))
+    database_process.start()
+
     # Set up socket to listen for connection requests
     connect_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     connect_request.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -119,7 +138,7 @@ if __name__ == "__main__":
             client_connection, address = connect_request.accept()
 
             # Fork a child process to handle client login
-            client_login = mp.Process(target=login_process, args=(client_connection, address,))
+            client_login = mp.Process(target=login_process, args=(client_connection, address, database_queue))
             client_login.start()
 
             # Close client connection on daemon end

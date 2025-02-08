@@ -218,7 +218,6 @@ if __name__ == "__main__":
 
     # Set up socket to listen for connection requests
     connect_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    connect_request.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     connect_request.bind((host, daemon_port))
     connect_request.listen(5)
     print(f"Daemon listening on {(host, daemon_port)}")

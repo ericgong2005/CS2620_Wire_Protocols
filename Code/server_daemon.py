@@ -3,7 +3,6 @@ import os
 import socket
 import sys
 from pathlib import Path
-import csv
 import multiprocessing as mp
 
 from Modules.database_manager import DatabaseManager

@@ -35,6 +35,8 @@ We split the plan down into a couple modularized and separate implementations. T
 - have one process to query the database to prevent issues on concurrency
 - have a database class with the necessary functions
 - make sure that the database class contains \_\_exit\_\_ definitions so the .db doesn't get corrupted
+- For processes to communicate with the databse process, create a new pipe for each communication and close it immediately when done to avoid dealing with the semantics of leaving a pipe open and getting inturrupted
+    - However, should figure out how to keep the pipe open and figure out the correct error catching, both for efficiency, and also due to the fact that the program would break if an interrupt came in at the moment before the pipe is closed in the current implementation.
 
 ### Client-Server communication setup:
 Client specifications:

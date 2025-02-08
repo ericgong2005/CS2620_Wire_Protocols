@@ -26,11 +26,14 @@ def database_proccess(database_queue):
     while True:
         request = database_queue.get()
         print(f"Database recieved Request {request}")
-        if request["type"] == DB.GET_PASSWORD:
-            request["return"].send(db.get_password(request["data"]))
-        else:
-            request["return"].send((Status.INVALID_INPUT, None))   
-        request["return"].close()
+        try:
+            if request["type"] == DB.GET_PASSWORD:
+                request["return"].send(db.get_password(request["data"]))
+            else:
+                request["return"].send((Status.INVALID_INPUT, None))   
+        except (BrokenPipeError, EOFError) as e:
+            print(f"Database failed to answer {request} due to {e}")
+
 
 def user_process(connection, address, database_queue, user_start, username) :
     """
@@ -65,6 +68,8 @@ def login_process(connection, address, database_queue):
 
     username = ""
     password = ""
+    login_end, database_end = mp.Pipe()
+
     try:
         print(f"Login process {os.getpid()} handling connection from {address}")
 
@@ -80,11 +85,14 @@ def login_process(connection, address, database_queue):
             if not words:
                 continue
             elif words[0] == "username":
-                login_end, database_end = mp.Pipe()
                 request = {"type" : DB.GET_PASSWORD, "data": words[1], "return" : database_end}
                 database_queue.put(request)
-                status, result = login_end.recv()
-                print(f"Login Process Recieved {status} {result}")
+                try:
+                    status, result = login_end.recv()
+                    print(f"Login Process {os.getpid()} recieved {status} {result}")
+                except (BrokenPipeError, EOFError) as e:
+                    print(f"User process {os.getpid()} failed to receive response on {request} due to {e}")
+                    break
                 if status == Status.SUCCESS:
                     username = words[1]
                     password = result
@@ -113,6 +121,8 @@ def login_process(connection, address, database_queue):
         print(f"Error in login process {os.getpid()}:", e)
     finally:
         connection.close()
+        login_end.close() 
+        database_end.close()
         print(f"Login process {os.getpid()} closing connection from {address}")
 
 if __name__ == "__main__":

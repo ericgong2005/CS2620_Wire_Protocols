@@ -23,22 +23,52 @@ def database_proccess(database_queue):
     db.insert_user("a", "b")
     db.insert_user("abcd", "1234")
 
+    user_dict = {}
+
     while True:
         request = database_queue.get()
         print(f"Database recieved Request {request.to_string()}")
-        try:
-            request.pipe.send(db.handler(request)) 
-            print(f"Database answered {request.to_string()}")
-        except Exception as e:
-            print("Database failed to answer request due to", e)
+        if request.request == DB.LOGIN:
+            username = request.data[0]
+            if username in user_dict.keys():
+                request.pipe.send(Status.DUPLICATE)
+            else:
+                user_dict[username] = request.pid
+                request.pipe.send(Status.SUCCESS)
+        elif request.request == DB.CURRENT_USERS:
+            request.pipe.send((Status.SUCCESS, user_dict))
+        else:
+            try:
+                request.pipe.send(db.handler(request)) 
+                print(f"Database answered {request.to_string()}")
+            except Exception as e:
+                print("Database failed to answer request due to", e)
 
 def user_process(connection, address, database_queue, user_start, username) :
     """
     Handle client connection normal user activity
     """
     user_start.set()
+    user_end, database_end = mp.Pipe()
     try:
         print(f"User process {os.getpid()} handling connection from {address}")
+
+        request = QueryObject(DB.LOGIN, [username], database_end, os.getpid())
+        database_queue.put(request)
+        status = user_end.recv()
+        print(f"User Process {os.getpid()} recieved {status}")
+        if status == Status.SUCCESS:
+            response = "Logged In"
+            connection.sendall(response.encode("utf-8"))
+        elif status == Status.DUPLICATE:
+            response = "Duplicate"
+            connection.sendall(response.encode("utf-8"))
+            raise Exception("Login failed")
+        else:
+            response = "Failed"
+            connection.sendall(response.encode("utf-8"))
+            raise Exception("Login failed")
+
         while True:
             data = connection.recv(1024)
             print(f"User process {os.getpid()} got data {data}")
@@ -48,14 +78,24 @@ def user_process(connection, address, database_queue, user_start, username) :
                 break  
 
             data = data.decode("utf-8")
-            
-            response = f"Success: {data}"
+            if data == "Get Users":
+                request = QueryObject(DB.CURRENT_USERS, None, database_end, os.getpid())
+                database_queue.put(request)
+                status, users = user_end.recv()
+                if(status == Status.SUCCESS):
+                    response = f"Users: {users}"
+                else:
+                    response = "Failed to Retrieve Active Users"
+            else:
+                response = f"Success: {data}"
 
             connection.sendall(response.encode("utf-8"))
     except Exception as e:
         print(f"Error in User process {os.getpid()}:", e)
     finally:
         connection.close()
+        user_end.close() 
+        database_end.close()
         print(f"User process {os.getpid()} closing connection from {address}")
 
 def login_process(connection, address, database_queue):
@@ -130,7 +170,7 @@ def login_process(connection, address, database_queue):
                         break
                     if status == Status.SUCCESS:
                         response = "Success"
-                    elif status == Status.FAIL:
+                    elif status == Status.DUPLICATE:
                         response = "Exists"
                     else:
                         response = "Fail"          

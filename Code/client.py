@@ -4,6 +4,16 @@ import sys
 # run python client.py HOSTNAME PORTNAME
 
 def client_user(server_socket, username):
+    data = server_socket.recv(1024)
+    data = data.decode("utf-8")
+    if data == "Logged In":
+        print("Logged In")
+    elif data == "Duplicate":
+        print("Already Logged In Elsewhere")
+        return
+    else:
+        print("Login Failed")
+        return
     while True:
         message = input(f"Enter a message as User {username}: ")
         if message == "exit":
@@ -77,7 +87,7 @@ def client_login(server_socket):
         data = data.decode("utf-8")
         print(f"Recieved {data}")
         if data == "Logged In":
-            print("Logged In")
+            print("Logging In")
             client_user(server_socket, username)
             break
         elif data == "Wrong Password":

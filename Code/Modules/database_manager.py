@@ -89,7 +89,7 @@ class DatabaseManager:
                 username, password = request.data[0], request.data[1]
                 status, _password = self.get_password(username)
                 if status == Status.SUCCESS:
-                    return(Status.FAIL, None)
+                    return(Status.DUPLICATE, None)
                 status = self.insert_user(request.data[0], request.data[1])
                 return (status, None)
             case _:

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 import multiprocessing as mp
 
-from Modules.database_manager import DatabaseManager
+from Modules.database_manager import DatabaseManager, QueryObject
 from Modules.constants import DB, Status
 
 PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
@@ -25,15 +25,12 @@ def database_proccess(database_queue):
 
     while True:
         request = database_queue.get()
-        print(f"Database recieved Request {request}")
+        print(f"Database recieved Request {request.to_string()}")
         try:
-            if request["type"] == DB.GET_PASSWORD:
-                request["return"].send(db.get_password(request["data"]))
-            else:
-                request["return"].send((Status.INVALID_INPUT, None))   
-        except (BrokenPipeError, EOFError) as e:
-            print(f"Database failed to answer {request} due to {e}")
-
+            request.pipe.send(db.handler(request)) 
+            print(f"Database answered {request.to_string()}")
+        except Exception as e:
+            print("Database failed to answer request due to", e)
 
 def user_process(connection, address, database_queue, user_start, username) :
     """
@@ -67,7 +64,6 @@ def login_process(connection, address, database_queue):
     """
 
     username = ""
-    password = ""
     login_end, database_end = mp.Pipe()
 
     try:
@@ -85,26 +81,32 @@ def login_process(connection, address, database_queue):
             if not words:
                 continue
             elif words[0] == "username":
-                request = {"type" : DB.GET_PASSWORD, "data": words[1], "return" : database_end}
+                request = QueryObject(DB.CHECK_USERNAME, [words[1]], database_end, os.getpid())
                 database_queue.put(request)
                 try:
                     status, result = login_end.recv()
                     print(f"Login Process {os.getpid()} recieved {status} {result}")
-                except (BrokenPipeError, EOFError) as e:
-                    print(f"User process {os.getpid()} failed to receive response on {request} due to {e}")
+                except Exception as e:
+                    print("User process failed to receive response from database due to", e)
                     break
-                if status == Status.SUCCESS:
-                    username = words[1]
-                    password = result
+                if status == Status.SUCCESS and result == words[1]:
+                    username = result
                     response = "Enter Password"
                 else:
                     response = "No User"
-                login_end.close()
             elif words[0] == "password":
                 if not username:
                     response = "Enter Username"
                 else:
-                    if password == words[1]:
+                    request = QueryObject(DB.CHECK_PASSWORD, [username, words[1]], database_end, os.getpid())
+                    database_queue.put(request)
+                    try:
+                        status, result = login_end.recv()
+                        print(f"Login Process {os.getpid()} recieved {status} {result}")
+                    except Exception as e:
+                        print("User process failed to receive response from database due to", e)
+                        break
+                    if status == Status.SUCCESS and result == username:
                         user_start =  mp.Event()
                         client_user = mp.Process(target=user_process, args=(connection, address, database_queue, user_start, username))
                         client_user.start()
@@ -113,9 +115,25 @@ def login_process(connection, address, database_queue):
                         connection.sendall(response.encode("utf-8"))
                         break
                     else:
-                        response = f"Wrong Password"
-            else:
-                response = "Error"
+                        response = "Wrong Password"
+            elif words[0] == "add":
+                if not words[1] or not words[2]:
+                    response = "Fail"
+                else:
+                    request = QueryObject(DB.ADD_USER, [words[1], words[2]], database_end, os.getpid())
+                    database_queue.put(request)
+                    try:
+                        status, _result = login_end.recv()
+                        print(f"Login Process {os.getpid()} recieved {status} {result}")
+                    except Exception as e:
+                        print("User process failed to receive response from database due to", e)
+                        break
+                    if status == Status.SUCCESS:
+                        response = "Success"
+                    elif status == Status.FAIL:
+                        response = "Exists"
+                    else:
+                        response = "Fail"          
             connection.sendall(response.encode("utf-8"))
     except Exception as e:
         print(f"Error in login process {os.getpid()}:", e)

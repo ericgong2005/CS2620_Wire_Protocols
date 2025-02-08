@@ -3,8 +3,11 @@ from enum import Enum
 class Status(Enum):
     ERROR = -1
     SUCCESS = 0
-    INVALID_INPUT = 1
-    NOT_FOUND = 2
+    FAIL = 1
+    INVALID_INPUT = 2
+    NOT_FOUND = 3
 
 class DB(Enum):
-    GET_PASSWORD = 0
+    CHECK_USERNAME = 0
+    CHECK_PASSWORD = 1
+    ADD_USER = 2

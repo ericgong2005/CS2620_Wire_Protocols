@@ -14,9 +14,38 @@ def client_user(server_socket, username):
         data = data.decode("utf-8")
         print(f"Received: {data}")
 
+def client_create_user(server_socket):
+    username = ""
+    while True:
+        print("Create New User:")
+        username = input("Enter Username: ")
+        password = input("Enter Password: ")
+        confirm_password = input("Confirm Password: ")
+        if password == confirm_password:
+            message = ("add " + username + " " + password).encode("utf-8")
+            server_socket.sendall(message)
+
+        data = server_socket.recv(1024)
+        if not data:
+            print("Connection closed by the server.")
+            return
+        data = data.decode("utf-8")
+        print(f"Recieved {data}")
+        if data == "Success":
+            print(f"Created User with Username: {username}, Password: {password}")
+            return
+        elif data == "Exists":
+            print("User Exists.")
+            return
+        elif data == "Fail":
+            print("Failed to create new user. Try again.")
+        else:
+            print("Error")
+
 def client_login(server_socket):
     username = ""
     while True:
+        print("Login:")
         username = input("Enter Username: ")
         message = ("username " + username).encode("utf-8")
         server_socket.sendall(message)
@@ -31,6 +60,7 @@ def client_login(server_socket):
             break
         elif data == "No User":
             print("No such username exists")
+            client_create_user(server_socket)
         else:
             print("Error")
     

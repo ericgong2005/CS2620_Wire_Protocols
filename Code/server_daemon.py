@@ -11,6 +11,10 @@ from Modules.constants import DB, Status
 PASSWORD_FILE = Path(__file__).parent / "User_Data/passwords.csv"
 
 def database_proccess(database_queue):
+    """
+    Handle all requests to the database
+    """
+
     print(f"Database process {os.getpid()} started")
 
     db = DatabaseManager()

@@ -6,6 +6,7 @@
 - Code Version logs
 - Planning Version 1
 - Planning Version 2
+- Planning Verison 3
 
 
 ## Planning
@@ -38,6 +39,7 @@ We split the plan down into a couple modularized and separate implementations. T
 - make sure that the database class contains \_\_exit\_\_ definitions so the .db doesn't get corrupted
 - For processes to communicate with the databse process, create a new pipe for each communication and close it immediately when done to avoid dealing with the semantics of leaving a pipe open and getting inturrupted
     - However, should figure out how to keep the pipe open and figure out the correct error catching, both for efficiency, and also due to the fact that the program would break if an interrupt came in at the moment before the pipe is closed in the current implementation.
+
 
 ### Client-Server communication setup:
 Client specifications:
@@ -128,6 +130,7 @@ A log of changes, ideas and observations to the plan
     - Having a single process for accessing the .db files will prevent issues on concurrency
     - Copy of old ideas in Version 1
 - Best practice to ensure the passwordhash is as hidden as possible. Move the checking of the password to the database class in the database process, not letting the login process see the passwordhash at all
+- Change the use of pipes to sockets for support on windows
 
 
 ## Code Version Logs
@@ -138,6 +141,13 @@ A log of changes, ideas and observations to the plan
     - No rigorous testing yet, only tried via terminal
     - Does not support the creation of new users
     - stores passwords in a .csv file
+    - passwords currently plaintext
+- Version2:
+    - Daemon unaffected by login_process and user_process errors
+    - Multiple users can connect at once
+    - Some rigorous testing
+    - Support the creation of new users
+    - stores passwords in a .db file
     - passwords currently plaintext
 
 ## Planning Version 1
@@ -364,3 +374,22 @@ Deleting accounts:
 - The database process goes through all undelivered, recieved messages, changing the recipent to the sender, adding a note that the account was deleted before the message could be delivered, and follow the sending process
 - The user process sends a confirmation to the client, which switches to the login page
 - The user process kills itself
+
+## Planning Version 3
+We split the plan down into a couple modularized and separate implementations. This will ensure that each portion can be changed with minimal impact on other components, as well increase our ability to remain organized.
+
+### Key Components:
+- Database
+
+### Database:
+- access everything using SQLite on .db files
+- one passwords.db file with username-password pairs (not plaintext passwords, of course)
+    - have entries for Username and hashed_password
+- one messages.db file with messages
+    - have sender, reciever, time sent, delivered, subject, message
+- one users.db with usernames and maybe things like # of undelivered messages
+- have one process to query the database to prevent issues on concurrency
+- have a database class with the necessary functions
+- make sure that the database class contains \_\_exit\_\_ definitions so the .db doesn't get corrupted
+- For processes to communicate with the databse process, create a new pipe for each communication and close it immediately when done to avoid dealing with the semantics of leaving a pipe open and getting inturrupted
+    - However, should figure out how to keep the pipe open and figure out the correct error catching, both for efficiency, and also due to the fact that the program would break if an interrupt came in at the moment before the pipe is closed in the current implementation.

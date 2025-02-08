@@ -13,4 +13,5 @@ class DB(Enum):
     CHECK_PASSWORD = 1
     ADD_USER = 2
     LOGIN = 3
-    CURRENT_USERS = 4
+    LOGOUT = 4
+    CURRENT_USERS = 5

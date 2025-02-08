@@ -29,19 +29,22 @@ def database_proccess(database_queue):
         request = database_queue.get()
         print(f"Database recieved Request {request.to_string()}")
         if request.request == DB.LOGIN:
-            username = request.data[0]
-            if username in user_dict.keys():
+            if request.username in user_dict:
                 request.pipe.send(Status.DUPLICATE)
             else:
-                user_dict[username] = request.pid
+                user_dict[request.username] = (request.pid, request.pipe)
                 request.pipe.send(Status.SUCCESS)
+        elif request.request == DB.LOGOUT:
+            if request.username in user_dict:
+                del user_dict[request.username]
         elif request.request == DB.CURRENT_USERS:
-            request.pipe.send((Status.SUCCESS, user_dict))
+            request.pipe.send((Status.SUCCESS, list(user_dict.keys())))
         else:
             try:
                 request.pipe.send(db.handler(request)) 
                 print(f"Database answered {request.to_string()}")
             except Exception as e:
+                del user_dict[request.username]
                 print("Database failed to answer request due to", e)
 
 def user_process(connection, address, database_queue, user_start, username) :
@@ -50,26 +53,25 @@ def user_process(connection, address, database_queue, user_start, username) :
     """
     user_start.set()
     user_end, database_end = mp.Pipe()
+    logged_in = False
     try:
         print(f"User process {os.getpid()} handling connection from {address}")
 
-        request = QueryObject(DB.LOGIN, [username], database_end, os.getpid())
+        request = QueryObject(DB.LOGIN, username, None, database_end, os.getpid())
         database_queue.put(request)
         status = user_end.recv()
         print(f"User Process {os.getpid()} recieved {status}")
         if status == Status.SUCCESS:
+            logged_in = True
             response = "Logged In"
-            connection.sendall(response.encode("utf-8"))
         elif status == Status.DUPLICATE:
             response = "Duplicate"
-            connection.sendall(response.encode("utf-8"))
-            raise Exception("Login failed")
         else:
             response = "Failed"
-            connection.sendall(response.encode("utf-8"))
-            raise Exception("Login failed")
+        
+        connection.sendall(response.encode("utf-8"))
 
-        while True:
+        while logged_in:
             data = connection.recv(1024)
             print(f"User process {os.getpid()} got data {data}")
 
@@ -79,7 +81,7 @@ def user_process(connection, address, database_queue, user_start, username) :
 
             data = data.decode("utf-8")
             if data == "Get Users":
-                request = QueryObject(DB.CURRENT_USERS, None, database_end, os.getpid())
+                request = QueryObject(DB.CURRENT_USERS, username, None, database_end, os.getpid())
                 database_queue.put(request)
                 status, users = user_end.recv()
                 if(status == Status.SUCCESS):
@@ -93,6 +95,9 @@ def user_process(connection, address, database_queue, user_start, username) :
     except Exception as e:
         print(f"Error in User process {os.getpid()}:", e)
     finally:
+        if logged_in:
+            request = QueryObject(DB.LOGOUT, username, None, None, os.getpid())
+            database_queue.put(request)
         connection.close()
         user_end.close() 
         database_end.close()
@@ -121,7 +126,7 @@ def login_process(connection, address, database_queue):
             if not words:
                 continue
             elif words[0] == "username":
-                request = QueryObject(DB.CHECK_USERNAME, [words[1]], database_end, os.getpid())
+                request = QueryObject(DB.CHECK_USERNAME, None, [words[1]], database_end, os.getpid())
                 database_queue.put(request)
                 try:
                     status, result = login_end.recv()
@@ -138,7 +143,7 @@ def login_process(connection, address, database_queue):
                 if not username:
                     response = "Enter Username"
                 else:
-                    request = QueryObject(DB.CHECK_PASSWORD, [username, words[1]], database_end, os.getpid())
+                    request = QueryObject(DB.CHECK_PASSWORD, None, [username, words[1]], database_end, os.getpid())
                     database_queue.put(request)
                     try:
                         status, result = login_end.recv()
@@ -160,7 +165,7 @@ def login_process(connection, address, database_queue):
                 if not words[1] or not words[2]:
                     response = "Fail"
                 else:
-                    request = QueryObject(DB.ADD_USER, [words[1], words[2]], database_end, os.getpid())
+                    request = QueryObject(DB.ADD_USER, None, [words[1], words[2]], database_end, os.getpid())
                     database_queue.put(request)
                     try:
                         status, _result = login_end.recv()

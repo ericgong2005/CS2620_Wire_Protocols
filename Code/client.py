@@ -21,6 +21,9 @@ def client_user(server_socket, username):
         message = message.encode("utf-8")
         server_socket.sendall(message)
         data = server_socket.recv(1024)
+        if not data:
+            print("Connection closed by the server.")
+            return
         data = data.decode("utf-8")
         print(f"Received: {data}")
 
@@ -101,11 +104,12 @@ if __name__ == "__main__":
         exit(1)
     host, port = sys.argv[1], int(sys.argv[2])
 
-    # Connect to the server
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.connect((host, int(port)))
+    while True:
+        # Connect to the server
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.connect((host, int(port)))
 
-    # Start the login process
-    client_login(server_socket)
+        # Start the login process
+        client_login(server_socket)
 
-    server_socket.close()
+        server_socket.close()

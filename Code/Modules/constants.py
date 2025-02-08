@@ -9,6 +9,7 @@ class Status(Enum):
     DUPLICATE = 4
 
 class DB(Enum):
+    EMPTY = -1
     CHECK_USERNAME = 0
     CHECK_PASSWORD = 1
     ADD_USER = 2

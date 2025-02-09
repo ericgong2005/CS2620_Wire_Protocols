@@ -4,7 +4,6 @@ import socket
 import sys
 import multiprocessing as mp
 import selectors
-import types
 
 from Modules.database_manager import DatabaseManager, QueryObject, ResponseObject
 from Modules.selector_data import SelectorData
@@ -12,8 +11,7 @@ from Modules.constants import DB, Status
 
 def database_query(db, selector, online_username, online_address, key, mask):
     cur_socket = key.fileobj
-    data = key.data
-    address_string = f"{data.address}"
+    address_string = f"{key.data.address}"
     if mask & selectors.EVENT_READ:
         recieve = cur_socket.recv(1024)
         if recieve:
@@ -35,10 +33,8 @@ def database_query(db, selector, online_username, online_address, key, mask):
                 target_username = request.data[0]
                 if target_username in online_username:
                     target_key = online_username[target_username]
-                    if target_key.data.outb != b"":
-                        raise Exception("Mismanaged client connection")
                     response.update(DB.NOTIFY, Status.ALERT, [request.username])
-                    target_key.data.outb += response.serialize()
+                    target_key.data.outbound.put(response.serialize())
                     response.update(DB.NOTIFY, Status.SUCCESS, None)
                 else:
                     response.update(DB.NOTIFY, Status.FAIL, None)
@@ -46,19 +42,19 @@ def database_query(db, selector, online_username, online_address, key, mask):
                 status, db_data = db.handler(request)
                 print(f"Handler Responds with {status} {db_data}")
                 response.update(request.request, status, db_data if db_data else None) 
-            data.outb += response.serialize()
+            key.data.outbound.put(response.serialize())
         else:
-            print(f"Database closing connection to {data.address}")
+            print(f"Database closing connection to {key.data.address}")
             if address_string in online_address:
                 del online_username[online_address[address_string]]
                 del online_address[address_string]
             selector.unregister(cur_socket)
             cur_socket.close()
     if mask & selectors.EVENT_WRITE:
-        if data.outb:
-            cur_socket.sendall(data.outb)
-            print(f"Database responds with: {(data.outb).decode("utf-8")}")
-            data.outb = b""
+        if not key.data.outbound.empty():
+            message = key.data.outbound.get()
+            cur_socket.sendall(message)
+            print(f"Database responds with: {message.decode("utf-8")}")
     
 def database_process(host, database_port):
     """
@@ -95,9 +91,8 @@ def database_process(host, database_port):
                     connection, address = key.fileobj.accept()
                     print(f"Database accepted connection from {address}")
                     connection.setblocking(False)
-                    data = types.SimpleNamespace(address=address, inb=b"", outb=b"")
                     events = selectors.EVENT_READ | selectors.EVENT_WRITE
-                    selector.register(connection, events, data=data)
+                    selector.register(connection, events, data=SelectorData(f"{address}", address))
                 else:
                     database_query(db, selector, online_username, online_address, key, mask)
     except Exception as e:

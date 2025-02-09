@@ -1,4 +1,5 @@
 from Modules.DataObjects import DataObject
+from Modules.Flags import EncodeType
 
 def tests():
     t = DataObject(datalen = 2, data = ["hello\nhello\n100%\n\n", "你好\n"])

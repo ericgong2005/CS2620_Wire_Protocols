@@ -10,22 +10,23 @@ PASSWORD_DATABASE = Path(__file__).parent.parent / "User_Data/passwords.db"
 PASSWORD_DATABASE_SCHEMA = "Passwords(Username TEXT PRIMARY KEY, Password TEXT NOT NULL)"
 
 class QueryObject:
-    def __init__(self, request : DB, username: str, pid : int, data : list[str]):
+    def __init__(self, request : DB = DB.EMPTY, username: str = None, pid : int = None, data : list[str] = []):
         self.request = request if request else DB.EMPTY
         self.username = username
         self.pid = pid
         self.data = data if data else []
 
-    def serialize(self) -> str:
+    def serialize(self) -> bytes:
         return (
             f"{self.request.name}\n"
             f"{self.username if self.username else ""}\n"
             f"{self.pid if self.pid else ""}\n"
             f"{len(self.data)}\n"
             f"{'\n'.join(self.data) }"
-        )
+        ).encode("utf-8")
     
-    def deserialize(self, serial : str) -> Status:
+    def deserialize(self, serial : bytes) -> Status:
+        serial = serial.decode("utf-8")
         lines = serial.splitlines()
         try:
             if len(lines) < 4:
@@ -55,37 +56,43 @@ class QueryObject:
         return f"{self.request} with {self.data} from {self.username} {self.pid}"
     
 class ResponseObject:
-    def __init__(self, status : Status, data : list[str]):
+    def __init__(self, request : DB = DB.EMPTY, status : Status = Status.FAIL, data : list[str] = []):
+        self.request = request if request else DB.EMPTY
         self.status = status if status else Status.FAIL
         self.data = data if data else []
 
-    def update(self, status : Status, data : list[str]):
+    def update(self, request : DB = DB.EMPTY, status : Status = Status.FAIL, data : list[str] = []):
+        self.request = request if request else DB.EMPTY
         self.status = status if status else Status.FAIL
         self.data = data if data else []
     
-    def serialize(self) -> str:
+    def serialize(self) -> bytes:
         return (
+            f"{self.request.name}\n"
             f"{self.status.name}\n"
             f"{len(self.data)}\n"
             f"{'\n'.join(self.data) }"
-        )
+        ).encode("utf-8")
     
     def deserialize(self, serial : str) -> Status:
+        serial = serial.decode("utf-8")
         lines = serial.splitlines()
         try:
-            if len(lines) < 2:
+            if len(lines) < 3:
                 raise Exception("Invalid serialization")
 
             # Parse the expected fields.
-            status = Status[lines[0]]
-            data_len = int(lines[1])
+            request = DB[lines[0]]
+            status = Status[lines[1]]
+            data_len = int(lines[2])
 
             # Ensure there are enough lines for all data items.
-            if len(lines) != 2 + data_len:
+            if len(lines) != 3 + data_len:
                 raise Exception("Invalid serialization")
 
-            data = lines[2:2 + data_len]
+            data = lines[3:3 + data_len]
 
+            self.request = request
             self.status = status
             self.data = data
             return Status.SUCCESS
@@ -93,7 +100,7 @@ class ResponseObject:
             return Status.FAIL
 
     def to_string(self) -> str:
-        return f"{self.status} with {self.data}"
+        return f"{self.request} returns {self.status} with {self.data}"
 
 class DatabaseManager:
     def __init__(self):

@@ -1,14 +1,14 @@
 from typing import Literal
 import time
+import json
 
 # from Modules.Flags import Request, Status
-from Flags import Request, Status
-
-SERIALIZER_TYPE = "Custom"
+from Flags import Request, Status, EncodeType
 
 class DataObject:
     def __init__(self, 
                  method : Literal["args", "serial"] = "args", 
+                 encode_type : EncodeType = EncodeType.CUSTOM,
                  serial : bytes = b"", 
                  request : Request = Request.EMPTY, 
                  status : Status = Status.PENDING, 
@@ -17,12 +17,14 @@ class DataObject:
                  datalen: int = 0,
                  data: list[str] = []):
         if method == "serial":
+            self.encode_type = encode_type
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
             # Have 0 be the indicator for assigning a sequence number by the time of the current system
             sequence = int(time.time()) if sequence == 0 else sequence
 
+            self.encode_type = encode_type
             self.request = request
             self.status = status
             self.sequence = sequence
@@ -38,6 +40,8 @@ class DataObject:
         '''
         Checks typing and basic assertions for each property
         '''
+        if not self.encode_type or not isinstance(self.encode_type, EncodeType):
+            raise Exception("Invalid DataObject encoding method Detected")
         if not self.request or not isinstance(self.request, Request):
             raise Exception("Invalid DataObject request Detected")
         if not self.status or not isinstance(self.status, Status):
@@ -52,6 +56,7 @@ class DataObject:
     
     def update(self, 
                  method : Literal["args", "serial"] = "args", 
+                 encode_type : EncodeType = None,
                  serial : bytes = b"", 
                  request : Request = None, 
                  status : Status = None, 
@@ -60,9 +65,11 @@ class DataObject:
                  datalen: int = None,
                  data: list[str] = None):
         if method == "serial":
+            self.encode_type = encode_type if encode_type else self.encode_type
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
+            self.encode_type = encode_type if encode_type else self.encode_type
             self.request = request if request else self.request
             self.status = status if status else self.status
             self.sequence = sequence if sequence else self.sequence
@@ -108,15 +115,16 @@ class DataObject:
                 decoded.append(byte)
         return bytes(decoded)
 
-        
-    def serialize(self):
+    def serialize(self, use_encode_type : EncodeType = None):
         '''
         Serialize the object first removing "\n" from each field via encode, 
         joining feilds with "\n", removing "\n" once again via encode,
         then surrounding the entire bytestring with "\n"
         '''
         self.typecheck()
-        if SERIALIZER_TYPE == "Custom":
+
+        use_encode_type = use_encode_type if use_encode_type else self.encode_type
+        if use_encode_type == EncodeType.CUSTOM:
             serial_list = [
                 str(self.request.value).encode("utf-8"),
                 str(self.status.value).encode("utf-8"),
@@ -141,7 +149,18 @@ class DataObject:
                 serialized.extend(b"\n")
                 serialized.extend(self.encode(entry))
 
-            final = b"\n" + self.encode(bytes(serialized)) + b"\n"
+            final = b"\n" + str(EncodeType.CUSTOM.value).encode("utf-8") + self.encode(bytes(serialized)) + b"\n"
+            return final
+        if use_encode_type == EncodeType.JSON:
+            payload = {
+                "request": self.request.value,
+                "status": self.status.value,
+                "sequence": self.sequence,
+                "user": self.user,
+                "datalen": self.datalen,
+                "data": self.data
+            }
+            final = b"\n" + str(EncodeType.JSON.value).encode("utf-8") + json.dumps(payload).encode("utf-8") + b"\n"
             return final
 
     def deserialize(self, input : bytes):
@@ -149,41 +168,60 @@ class DataObject:
         update the object with the arguments provided in deserialize by reversing
         the steps used to serialize
         '''
-        print(input[0], input[-1])
         if input[0] != ord("\n") or input[-1] != ord("\n"):
             raise Exception("Invalid encoding: Newline Wrapper Missing")
-        input = self.decode(input[1:-1])
-        lines = input.split(b"\n")
-        print(lines)
-
-        if len(lines) != 6:
-            raise Exception("Invalid encoding: Incorrect Fields")
-
-        self.request = Request(int(lines[0].decode("utf-8")))
-        self.status = Status(int(lines[1].decode("utf-8")))
-        self.sequence = int(lines[2].decode("utf-8"))
-        self.user = lines[3].decode("utf-8")
-        self.datalen = int(lines[4].decode("utf-8"))
-        self.data = []
-
-        if self.datalen == 0:
-            if lines[5] != b"0":
-                raise Exception("Invalid encoding: Incorrect Fields")
+        
+        input = input[1:-1]
+        
+        decode_type = None
+        if input[0] == ord(str(EncodeType.CUSTOM.value)):
+            decode_type = EncodeType.CUSTOM
+        elif input[0] == ord(str(EncodeType.JSON.value)):
+            decode_type = EncodeType.JSON
         else:
-            data = self.decode(lines[5])
-            print(data)
-            data = data.split(b"\n")
-            if len(data) != self.datalen:
-                raise Exception("Invalide encoding: Incorrect Data")
-            for item in data:
-                self.data.append(self.decode(item).decode("utf-8"))
-        
-        print(self.data)
-        
+            raise Exception("Invalid encoding: Encode Type Flag missing")
+    
+        input = input[1:]
+
+        if decode_type == EncodeType.CUSTOM:
+            input = self.decode(input)
+            lines = input.split(b"\n")
+
+            if len(lines) != 6:
+                raise Exception("Invalid encoding: Incorrect Fields")
+
+            self.request = Request(int(lines[0].decode("utf-8")))
+            self.status = Status(int(lines[1].decode("utf-8")))
+            self.sequence = int(lines[2].decode("utf-8"))
+            self.user = lines[3].decode("utf-8")
+            self.datalen = int(lines[4].decode("utf-8"))
+            self.data = []
+
+            if self.datalen == 0:
+                if lines[5] != b"0":
+                    raise Exception("Invalid encoding: Incorrect Fields")
+            else:
+                data = self.decode(lines[5])
+                data = data.split(b"\n")
+                if len(data) != self.datalen:
+                    raise Exception("Invalide encoding: Incorrect Data")
+                for item in data:
+                    self.data.append(self.decode(item).decode("utf-8"))
+            print(self.to_string())
+                    
+        elif decode_type == EncodeType.JSON:
+            data = json.loads(input.decode("utf-8"))
+            self.request = Request(data["request"])
+            self.status = Status(data["status"])
+            self.sequence = data["sequence"]
+            self.user = data["user"]
+            self.datalen = data["datalen"]
+            self.data = data["data"]
+
         self.typecheck()
     
     def to_string(self):
-        return ("\nDataObject contains:\n" +
+        return (f"\nDataObject uses {self.encode_type}, and contains:\n" +
                 f"\t{self.request}\n" +
                 f"\t{self.status}\n" +
                 f"\tSequence: {self.sequence}\n" +

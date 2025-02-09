@@ -9,9 +9,19 @@ def tests():
     print(t.encode(t.encode(b"h\ni") + b"\n" + t.encode(("你\n好").encode("utf-8"))).decode("utf-8"))
     print(t.decode(t.encode(t.encode(b"h\ni") + b"\n" + t.encode(("你\n好").encode("utf-8")))).decode("utf-8"))
 
-    print(t.serialize())
-    t.deserialize(t.serialize())
+    print(t.to_string())
+    t2 = DataObject()
+    print(t2.to_string())
+    t2.deserialize(t.serialize())
+    print(t2.to_string())
 
-    u = DataObject()
+    u = DataObject(encode_type=EncodeType.JSON)
     print(u.serialize())
-    u.deserialize(u.serialize())
+
+    tjson = DataObject(encode_type=EncodeType.JSON, datalen = 2, data = ["hello\nhello\n100%\n\n", "你好\n"])
+    print(tjson.serialize())
+
+    print("Test cross-method deserialization")
+
+    print(t2.deserialize(tjson.serialize()))
+    print(u.deserialize(t.serialize()))

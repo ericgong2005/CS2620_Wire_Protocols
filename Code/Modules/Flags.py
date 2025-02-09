@@ -22,3 +22,7 @@ class Status(Enum):
     MATCH = 2
     NO_MATCH = 3
     ERROR = 4
+
+class EncodeType(Enum):
+    CUSTOM = 0
+    JSON = 1

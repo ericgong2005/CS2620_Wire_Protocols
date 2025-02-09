@@ -1,4 +1,4 @@
-from Modules.database_manager import QueryObject, ResponseObject
+from Modules.data_objects import QueryObject, ResponseObject
 from Modules.constants import Status, DB
 
 def tests():

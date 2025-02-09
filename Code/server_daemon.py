@@ -5,63 +5,50 @@ import sys
 import multiprocessing as mp
 import selectors
 
-from Modules.database_manager import DatabaseManager, QueryObject, ResponseObject
+from Modules.database_manager import DatabaseManager
+from Modules.data_objects import QueryObject, ResponseObject
 from Modules.selector_data import SelectorData
 from Modules.constants import DB, Status
 
-def database_query(db, selector, online_username, online_address, key, mask):
-    cur_socket = key.fileobj
+def database_request_handler(db : DatabaseManager, 
+                             request : QueryObject, 
+                             key : selectors.SelectorKey, 
+                             online_username : dict[str, selectors.SelectorKey], 
+                             online_address : dict[str, str]) -> ResponseObject:
+    response = ResponseObject()
     address_string = f"{key.data.address}"
-    if mask & selectors.EVENT_READ:
-        recieve = cur_socket.recv(1024)
-        if recieve:
-            print(f"Database recieved Request: {recieve.decode("utf-8")}")
-            request = QueryObject()
-            request.deserialize(recieve)
-            response = ResponseObject()
-            print(f"Database recieved Request: {request.to_string()}")
-            if request.request == DB.LOGIN:
-                if request.username in online_username:
-                    response.update(DB.LOGIN, Status.DUPLICATE)
-                else:
-                    online_username[request.username] = key
-                    online_address[address_string] = request.username
-                    response.update(DB.LOGIN, Status.SUCCESS)
-            elif request.request == DB.CURRENT_USERS:
-                response.update(DB.CURRENT_USERS, Status.SUCCESS, list(online_username.keys()))
-            elif request.request == DB.NOTIFY:
-                target_username = request.data[0]
-                if target_username in online_username:
-                    target_key = online_username[target_username]
-                    response.update(DB.NOTIFY, Status.ALERT, [request.username])
-                    target_key.data.outbound.put(response.serialize())
-                    response.update(DB.NOTIFY, Status.SUCCESS, None)
-                else:
-                    response.update(DB.NOTIFY, Status.FAIL, None)
-            else:
-                status, db_data = db.handler(request)
-                print(f"Handler Responds with {status} {db_data}")
-                response.update(request.request, status, db_data if db_data else None) 
-            key.data.outbound.put(response.serialize())
+    if request.request == DB.LOGIN:
+        if request.username in online_username:
+            response.update(DB.LOGIN, Status.DUPLICATE)
         else:
-            print(f"Database closing connection to {key.data.address}")
-            if address_string in online_address:
-                del online_username[online_address[address_string]]
-                del online_address[address_string]
-            selector.unregister(cur_socket)
-            cur_socket.close()
-    if mask & selectors.EVENT_WRITE:
-        if not key.data.outbound.empty():
-            message = key.data.outbound.get()
-            cur_socket.sendall(message)
-            print(f"Database responds with: {message.decode("utf-8")}")
-    
-def database_process(host, database_port):
+            online_username[request.username] = key
+            online_address[address_string] = request.username
+            response.update(DB.LOGIN, Status.SUCCESS)
+    elif request.request == DB.CURRENT_USERS:
+        response.update(DB.CURRENT_USERS, Status.SUCCESS, list(online_username.keys()))
+    elif request.request == DB.NOTIFY:
+        target_username = request.data[0]
+        if target_username in online_username:
+            target_key = online_username[target_username]
+            response.update(DB.NOTIFY, Status.ALERT, [request.username])
+            target_key.data.outbound.put(response.serialize())
+            response.update(DB.NOTIFY, Status.SUCCESS, None)
+        else:
+            response.update(DB.NOTIFY, Status.FAIL, None)
+    else:
+        status, db_data = db.handler(request)
+        print(f"Handler Responds with {status} {db_data}")
+        response.update(request.request, status, db_data if db_data else None) 
+    return response
+
+def database_process(host, database_port, database_start):
     """
     Handle all requests to the database
     """
 
     print(f"Database process {os.getpid()} started")
+
+    database_start.set()
 
     database_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     database_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -87,14 +74,36 @@ def database_process(host, database_port):
         while True:
             events = selector.select(timeout=None)
             for key, mask in events:
-                if key.data is None:
+                if key.data is None: # Add new connection
                     connection, address = key.fileobj.accept()
                     print(f"Database accepted connection from {address}")
                     connection.setblocking(False)
                     events = selectors.EVENT_READ | selectors.EVENT_WRITE
                     selector.register(connection, events, data=SelectorData(f"{address}", address))
                 else:
-                    database_query(db, selector, online_username, online_address, key, mask)
+                    cur_socket = key.fileobj
+                    address_string = f"{key.data.address}"
+                    if mask & selectors.EVENT_READ:
+                        recieve = cur_socket.recv(1024)
+                        if recieve:
+                            print(f"Database recieved Request: {recieve.decode("utf-8")}")
+                            request = QueryObject()
+                            request.deserialize(recieve)
+                            print(f"Database recieved Request: {request.to_string()}")
+                            response = database_request_handler(db, request, key, online_username, online_address)
+                            key.data.outbound.put(response.serialize())
+                        else:
+                            print(f"Database closing connection to {key.data.address}")
+                            if address_string in online_address:
+                                del online_username[online_address[address_string]]
+                                del online_address[address_string]
+                            selector.unregister(cur_socket)
+                            cur_socket.close()
+                    if mask & selectors.EVENT_WRITE:
+                        if not key.data.outbound.empty():
+                            message = key.data.outbound.get()
+                            cur_socket.sendall(message)
+                            print(f"Database sent to {key.data.source}: {message.decode("utf-8")}")
     except Exception as e:
         print(f"Database process encountered error {e}")
     finally:
@@ -356,9 +365,11 @@ if __name__ == "__main__":
     # Set the child creation type to spawn to support windows
     mp.set_start_method('spawn')
 
-    # Set up the database process
-    database = mp.Process(target=database_process, args=(host, database_port,))
+    # Set up the database process, and wait for it to start
+    database_start =  mp.Event()
+    database = mp.Process(target=database_process, args=(host, database_port, database_start,))
     database.start()
+    database_start.wait()
 
     # Set up socket to listen for connection requests
     connect_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

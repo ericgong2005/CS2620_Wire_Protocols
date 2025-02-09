@@ -9,38 +9,35 @@ import types
 from Modules.database_manager import DatabaseManager, QueryObject, ResponseObject
 from Modules.constants import DB, Status
 
-def database_query(db, selector, online, key, mask):
+def database_query(db, selector, online_username, online_address, key, mask):
     socket = key.fileobj
     data = key.data
+    address_string = f"{data.address}"
     if mask & selectors.EVENT_READ:
         recieve = socket.recv(1024)
         if recieve:
-            data.outb += recieve
-        else:
-            print(f"Database closing connection to {data.address}")
-            selector.unregister(socket)
-            socket.close()
-    if mask & selectors.EVENT_WRITE:
-        if data.outb:
-            print(f"Database recieved Request: {data.outb.decode("utf-8")}")
+            print(f"Database recieved Request: {recieve.decode("utf-8")}")
             request = QueryObject(None, None, None, None)
-            request.deserialize(data.outb.decode("utf-8"))
+            request.deserialize(recieve.decode("utf-8"))
             response = ResponseObject(None, None)
             print(f"Database recieved Request: {request.to_string()}")
             if request.request == DB.LOGIN:
-                if request.username in online:
+                if request.username in online_username:
                     response.update(Status.DUPLICATE, None)
                 else:
-                    online[request.username] = (request.pid)
+                    online_username[request.username] = key
+                    online_address[address_string] = request.username
                     response.update(Status.SUCCESS, None)
-            elif request.request == DB.LOGOUT:
-                if request.username in online:
-                    del online[request.username]
             elif request.request == DB.CURRENT_USERS:
-                response.update(Status.SUCCESS, list(online.keys()))
+                response.update(Status.SUCCESS, list(online_username.keys()))
             elif request.request == DB.NOTIFY:
-                target = request.data[0]
-                if target in online:
+                target_username = request.data[0]
+                if target_username in online_username:
+                    target_key = online_username[target_username]
+                    if target_key.data.outb != b"":
+                        raise Exception("Mismanaged client connection")
+                    response.update(Status.ALERT, [request.username])
+                    target_key.data.outb += response.serialize().encode("utf-8")
                     response.update(Status.SUCCESS, None)
                 else:
                     response.update(Status.FAIL, None)
@@ -48,8 +45,18 @@ def database_query(db, selector, online, key, mask):
                 status, db_data = db.handler(request)
                 print(f"Handler Responds with {status} {db_data}")
                 response.update(status, db_data if db_data else None) 
-            socket.sendall(response.serialize().encode("utf-8"))
-            print(f"Database responds with: {response.to_string()}")
+            data.outb += response.serialize().encode("utf-8")
+        else:
+            print(f"Database closing connection to {data.address}")
+            if address_string in online_address:
+                del online_username[online_address[address_string]]
+                del online_address[address_string]
+            selector.unregister(socket)
+            socket.close()
+    if mask & selectors.EVENT_WRITE:
+        if data.outb:
+            socket.sendall(data.outb)
+            print(f"Database responds with: {data.outb.decode("utf-8")}")
             data.outb = b""
     
 def database_process(host, database_port):
@@ -75,7 +82,9 @@ def database_process(host, database_port):
     db.insert_user("a", "b")
     db.insert_user("abcd", "1234")
 
-    online = {}
+    # bi-directional {username : address} and {address : username} for who is online
+    online_username = {}
+    online_address = {}
 
     try:
         while True:
@@ -89,11 +98,11 @@ def database_process(host, database_port):
                     events = selectors.EVENT_READ | selectors.EVENT_WRITE
                     selector.register(connection, events, data=data)
                 else:
-                    database_query(db, selector, online, key, mask)
+                    database_query(db, selector, online_username, online_address, key, mask)
     except Exception as e:
         print(f"Database process encountered error {e}")
     finally:
-        print("Clsoing Database Process")
+        print("Closing Database Process")
         selector.close()
 
 
@@ -103,22 +112,24 @@ def user_process(client_connection, address, database, user_start, username) :
     """
     user_start.set()
     
-    database_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    database_socket.connect(database)
+    database_connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    database_connection.connect(database)
+
+    user_sockets = [client_connection, database_connection]
 
     logged_in = False
     try:
         print(f"User process {os.getpid()} handling connection from {address}")
 
         request = QueryObject(DB.LOGIN, username, os.getpid(), None)
-        database_socket.sendall(request.serialize().encode("utf-8"))
+        database_connection.sendall(request.serialize().encode("utf-8"))
         database_response = ResponseObject(None, None)
-        database_raw = database_socket.recv(1024)
+        database_raw = database_connection.recv(1024)
         if not database_raw:
             raise Exception("Connection Closed By Server")
         if not database_response.deserialize(database_raw.decode("utf-8")) == Status.SUCCESS:
             raise Exception("Parsing Failed")
-        print(f"User Process {os.getpid()} recieved {database_response.to_string()}")
+        print(f"User Process {os.getpid()} recieved {database_raw.decode("utf-8")}")
         if database_response.status == Status.SUCCESS:
             logged_in = True
             response = "Logged In"
@@ -140,28 +151,28 @@ def user_process(client_connection, address, database, user_start, username) :
             words = data.split()
             if words[0] == "get":
                 request = QueryObject(DB.CURRENT_USERS, username, os.getpid(), None)
-                database_socket.sendall(request.serialize().encode("utf-8"))
+                database_connection.sendall(request.serialize().encode("utf-8"))
                 database_response = ResponseObject(None, None)
-                database_raw = database_socket.recv(1024)
+                database_raw = database_connection.recv(1024)
                 if not database_raw:
                     raise Exception("Connection Closed By Server")
                 if not database_response.deserialize(database_raw.decode("utf-8")) == Status.SUCCESS:
                     raise Exception("Parsing Failed")
-                print(f"User Process {os.getpid()} recieved {database_response.to_string()}")
+                print(f"User Process {os.getpid()} recieved {database_raw.decode("utf-8")}")
                 if(database_response.status == Status.SUCCESS):
                     response = f"Users: {database_response.data}"
                 else:
                     response = "Failed to Retrieve Active Users"
             elif words[0] == "ping":
                 request = QueryObject(DB.NOTIFY, username, os.getpid(), [words[1]])
-                database_socket.sendall(request.serialize().encode("utf-8"))
+                database_connection.sendall(request.serialize().encode("utf-8"))
                 database_response = ResponseObject(None, None)
-                database_raw = database_socket.recv(1024)
+                database_raw = database_connection.recv(1024)
                 if not database_raw:
                     raise Exception("Connection Closed By Server")
                 if not database_response.deserialize(database_raw.decode("utf-8")) == Status.SUCCESS:
                     raise Exception("Parsing Failed")
-                print(f"User Process {os.getpid()} recieved {database_response.to_string()}")
+                print(f"User Process {os.getpid()} recieved {database_raw.decode("utf-8")}")
                 if(database_response.status == Status.SUCCESS):
                     response = "Ping Sent"
                 else:
@@ -174,10 +185,10 @@ def user_process(client_connection, address, database, user_start, username) :
         print(f"Error in User process {os.getpid()}:", e)
     finally:
         if logged_in:
-            request = QueryObject(DB.LOGOUT, username, None, None, os.getpid())
-            database_socket.sendall(request.serialize().encode("utf-8"))
+            request = QueryObject(DB.LOGOUT, username, os.getpid(), None)
+            database_connection.sendall(request.serialize().encode("utf-8"))
         client_connection.close()
-        database_socket.close()
+        database_connection.close()
         print(f"User process {os.getpid()} closing connection from {address}")
 
 def login_process(client_connection, address, database):
@@ -216,7 +227,7 @@ def login_process(client_connection, address, database):
                 if not database_response.deserialize(database_raw.decode("utf-8")) == Status.SUCCESS:
                     print("Parsing Failed")
                     break
-                print(f"Login Process {os.getpid()} parses to: {database_response.to_string()}")
+                print(f"Login Process {os.getpid()} parses to: {database_raw.decode("utf-8")}")
                 if database_response.status == Status.SUCCESS and database_response.data[0] == words[1]:
                     username = database_response.data[0]
                     response = "Enter Password"
@@ -237,7 +248,7 @@ def login_process(client_connection, address, database):
                         if not database_response.deserialize(database_raw.decode("utf-8")) == Status.SUCCESS:
                             print("Parsing Failed")
                             break
-                        print(f"Login Process {os.getpid()} recieved from database: {database_response.to_string()}")
+                        print(f"Login Process {os.getpid()} recieved from database: {database_raw.decode("utf-8")}")
                     except Exception as e:
                         print("User process failed to receive response from database due to", e)
                         break
@@ -266,7 +277,7 @@ def login_process(client_connection, address, database):
                         if not database_response.deserialize(database_raw.decode("utf-8")) == Status.SUCCESS:
                             print("Parsing Failed")
                             break
-                        print(f"Login Process {os.getpid()} recieved from database: {database_response.to_string()}")
+                        print(f"Login Process {os.getpid()} recieved from database: {database_raw.decode("utf-8")}")
                     except Exception as e:
                         print("User process failed to receive response from database due to", e)
                         break

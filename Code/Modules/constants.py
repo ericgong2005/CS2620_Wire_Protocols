@@ -7,6 +7,7 @@ class Status(Enum):
     INVALID_INPUT = 2
     NOT_FOUND = 3
     DUPLICATE = 4
+    ALERT = 5
 
 class DB(Enum):
     EMPTY = -1

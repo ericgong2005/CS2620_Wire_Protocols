@@ -1,7 +1,7 @@
-from collections import deque
+from queue import Queue
 
 class SelectorData:
     def __init__(self, source : str):
-        self.source = source
-        self.received = deque()
-        self.send = deque()
+        self.source : str = source
+        self.inbound : Queue[bytes] = Queue()
+        self.outbound : Queue[bytes] = Queue()

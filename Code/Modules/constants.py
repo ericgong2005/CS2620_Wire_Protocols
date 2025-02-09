@@ -4,10 +4,11 @@ class Status(Enum):
     ERROR = -1
     SUCCESS = 0
     FAIL = 1
-    INVALID_INPUT = 2
-    NOT_FOUND = 3
-    DUPLICATE = 4
-    ALERT = 5
+    INCOMPLETE = 2
+    INVALID_INPUT = 3
+    NOT_FOUND = 4
+    DUPLICATE = 5
+    ALERT = 6
 
 class DB(Enum):
     EMPTY = -1

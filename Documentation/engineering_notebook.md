@@ -1,6 +1,7 @@
 # Engineering Notebook
 
 ## Contents
+- Quick notes
 - Planning
 - Changes
 - Code Version logs
@@ -8,6 +9,9 @@
 - Planning Version 2
 - Planning Verison 3
 
+## Quick Notes
+- Remember to hash the password
+- Remember to implement an event waiting on the database process startup
 
 ## Planning
 We split the plan down into a couple modularized and separate implementations. This will ensure that each portion can be changed with minimal impact on other components, as well increase our ability to remain organized.

@@ -61,7 +61,7 @@ The following commands should be supported
     - return flag, (Success, Error), total messages, total unread, list of messages(sender, recipient, time, subject, text, read-boolean, id)
     - unread should count the number unread in the database, including the currently sent messages as unread
     - users may only see messages they received, not messages they sent, to make the reasoning about deletion easier 
-- Confirm Delivered: flag, id count, id list 
+- Confirm Read: flag, id count, id list 
     - return flag, (success, Error)
 - Delete message: flag, username, count retreive, count delete, id list
     - return flag, (success, Error), total messages, total unread, list of messages(sender, recipient, time, subject, text, delivered-boolean, id)
@@ -70,11 +70,14 @@ The following commands should be supported
     - return flag, (success, Error)
 
 We need a data object with the following feilds:
-- Request Flag: matching with the possible operations, plus an Empty flag
-- Status Flag: In_Action (for inputs), Success, Match, No_Match, Error
-- User: username for issuer or target
-- Data length: expected length of the data
-- Data: string array
+- Fields:
+    - Request Flag: matching with the possible operations, plus an Empty flag
+    - Status Flag: pending (for inputs), Success, Match, No_Match, Error
+    - time (might be useful for dropping old messages, time of instantiator)
+    - User: username for issuer or target
+    - Data length: expected length of the data
+    - Data: string array
+- will want to instantiate manually, or via passing in serialized version
 
 We need a Message object with the following feilds:
 - id (-1 when initially sent)
@@ -86,8 +89,8 @@ We need a Message object with the following feilds:
 - message
 
 Serializer:
-- For the custom serializer, we can denote breaks with "\", and encode in-text "\" as "%1", and in-text "%" as "%0"
-- we first serialize fields individually, joining them with "\" then serialize again, appending "\" to the start and end so that the start and end of a single transmission is clear.
+- For the custom serializer, we can denote breaks with "\n", and encode in-text "\n" as "%1", and in-text "%" as "%0"
+- we first serialize fields individually, joining them with "\n" then serialize again, appending "\n" to the start and end so that the start and end of a single transmission is clear.
 
 
 

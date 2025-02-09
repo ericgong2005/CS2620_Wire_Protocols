@@ -122,6 +122,7 @@ def user_process(client_connection, address, database, user_start, username) :
         database_connection.connect(database)
     except Exception as e:
         print(f"Error in User process {os.getpid()} when connecting to database:", e)
+        return
 
     # Set up the selector to switch between client and database communications
     user_selector = selectors.DefaultSelector()
@@ -137,6 +138,8 @@ def user_process(client_connection, address, database, user_start, username) :
         keys["database"].fileobj.sendall(request.serialize())
     except Exception as e:
         print(f"Error in User process {os.getpid()} when sending Login to database:", e)
+        user_selector.close()
+        return
 
     logged_in = False
 
@@ -170,6 +173,7 @@ def user_process(client_connection, address, database, user_start, username) :
                         raise Exception(response)                
     except Exception as e:
         print(f"Error in User process {os.getpid()} when confirming login:", e)
+
     
     # Messages as usual
     try:

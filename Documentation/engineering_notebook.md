@@ -80,7 +80,7 @@ We need a data object with the following feilds:
 - will want to instantiate manually, or via passing in serialized version
 
 We need a Message object with the following feilds:
-- id (-1 when initially sent)
+- id (0 when initially sent, as sqllite id's start from 1)
 - read boolean
 - sender
 - recipient

@@ -12,10 +12,11 @@ class QueryObject:
             self.data = [""]
         return (
             f"{self.request.name}\n"
-            f"{self.username if self.username else ""}\n"
-            f"{self.pid if self.pid else ""}\n"
+            f"{self.username if self.username else ''}\n"
+            f"{self.pid if self.pid else ''}\n"
             f"{len(self.data)}\n"
-            f"{'\n'.join(self.data)}\n"
+            + "\n".join(self.data)
+            + "\n"
         ).encode("utf-8")
     
     def deserialize(self, serial : bytes) -> tuple[Status, bytes]:
@@ -70,7 +71,8 @@ class ResponseObject:
             f"{self.request.name}\n"
             f"{self.status.name}\n"
             f"{len(self.data)}\n"
-            f"{'\n'.join(self.data)}\n"
+            + "\n".join(self.data)
+            + "\n"
         ).encode("utf-8")
     
     def deserialize(self, serial : str) -> tuple[Status, bytes]:

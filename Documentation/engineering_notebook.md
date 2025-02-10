@@ -43,7 +43,7 @@ The following commands should be supported
     - return flag, (Success, Match, Error) username or error message
     - match indicates duplicate username
 - Confirm Login (when starting user process): flag, username 
-    - return flag, (Success, Error) username or error message
+    - return flag, (Success, Match, Error) username or error message
 - Logout (from client to user process): flag, username
     - return none, user process kills itself upon receipt
 - Get Online Users: flag, 

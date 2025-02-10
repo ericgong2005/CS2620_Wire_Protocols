@@ -377,12 +377,12 @@ class MessageObject:
                 raise Exception("Invalid encoding: Incorrect Fields")
             
             self.id = int(lines[0].decode("utf-8"))
-            self.sender = lines[0].decode("utf-8")
-            self.recipient = lines[0].decode("utf-8")
-            self.time_sent = lines[0].decode("utf-8")
-            self.read = bool(lines[0].decode("utf-8"))
-            self.subject = lines[0].decode("utf-8")
-            self.body  = lines[0].decode("utf-8")
+            self.sender = lines[1].decode("utf-8")
+            self.recipient = lines[2].decode("utf-8")
+            self.time_sent = lines[3].decode("utf-8")
+            self.read = bool(lines[4].decode("utf-8"))
+            self.subject = lines[5].decode("utf-8")
+            self.body  = lines[6].decode("utf-8")
                     
         elif decode_type == EncodeType.JSON:
             data = json.loads(input.decode("utf-8"))
@@ -398,9 +398,9 @@ class MessageObject:
     
     def to_string(self):
         return (f"\nMessageObject uses {self.encode_type}, and contains:\n" +
-                f"\tID: {self.id}"
+                f"\tID: {self.id}\n"
                 f"\tFrom: {self.sender}\n" +
-                f"\tTo {self.recipient}\n" +
+                f"\tTo: {self.recipient}\n" +
                 f"\tTime Sent: {self.time_sent}\n" +
                 f"\tIs Read: {self.read}\n" +
                 f"\tSubject: {self.subject}\n" +

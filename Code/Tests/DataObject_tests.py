@@ -17,6 +17,9 @@ def tests():
     t2.deserialize(t.serialize())
     print(t2.to_string())
 
+    t3 = DataObject(method="serial", serial = t2.serialize())
+    print(t3.to_string())
+
     u = DataObject(encode_type=EncodeType.JSON)
     print(u.serialize())
 
@@ -35,6 +38,9 @@ def tests():
     print(mt2.to_string())
     mt2.deserialize(mt.serialize())
     print(mt2.to_string())
+
+    mt3 = MessageObject(method="serial", serial = mt2.serialize())
+    print(mt3.to_string())
 
     mu = MessageObject(encode_type=EncodeType.JSON, sender="Me", recipient="You")
     print(mu.serialize())

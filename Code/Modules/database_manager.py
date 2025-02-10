@@ -67,27 +67,30 @@ class DatabaseManager:
         match request.request:
             case Request.CHECK_USERNAME:
                 status, true_password = self.get_password(request.data[0])
-                if status == Status.SUCCESS:
-                    return (Status.SUCCESS, request.data[0])
-                return (status, None)
+                request.update(status=status)
+                return request
             case Request.CHECK_PASSWORD:
                 username, password = request.data[0], request.data[1]
                 status, true_password = self.get_password(username)
                 if status == Status.MATCH:
                     if password == true_password:
-                        return (Status.MATCH, username) 
+                        request.update(status=Status.MATCH, datalen=1, data=[username])
                     else:
-                        return (Status.NO_MATCH, username)
-                return (Status.ERROR, None)
+                        request.update(status=Status.NO_MATCH, datalen=1, data=[username])
+                else:
+                    request.update(status=Status.ERROR, datalen=0, data=[])
+                return request
             case Request.CREATE_USER:
                 username, password = request.data[0], request.data[1]
                 status, _password = self.get_password(username)
                 if status == Status.SUCCESS:
-                    return(Status.MATCH, None)
+                    request.update(status=Status.MATCH, datalen=0, data=[])
+                    return request
                 status = self.insert_user(request.data[0], request.data[1])
-                return (status, None)
+                request.update(status=status, datalen=0, data=[])
+                return request
             case _:
-                return (Status.ERROR, None)
+                request.update(status=Status.ERROR, datalen=0, data=[])
     
     def empty_table(self) -> Status:
         try:

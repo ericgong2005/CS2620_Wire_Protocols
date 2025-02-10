@@ -40,11 +40,8 @@ def database_request_handler(db : DatabaseManager,
         else:
             request.update(request=Request.SEND_MESSAGE, status=Status.ERROR)
     else:
-        status, db_data = db.handler(request)
-        print(f"Handler Responds with {status} {db_data}")
-        request.update(status=status) 
-        if db_data:
-            request.update(datalen=1, data = [db_data])
+        request = db.handler(request)
+        print(f"Handler Responds with {request.to_string()}")
     return request
 
 def database_process(host, database_port, database_start):

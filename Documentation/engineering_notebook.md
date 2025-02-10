@@ -18,6 +18,7 @@ We split the plan down into a couple modularized and separate implementations. T
 
 ### Key Components:
 - Organization
+- Database Calls
 - Callables and Communication Flags
 - Database
 - Client-Server communication setup
@@ -32,6 +33,37 @@ We split the plan down into a couple modularized and separate implementations. T
 - tests.py to run tests in the Test folder
 - server_daemon.py and client.py in the Code folder where Tests and Modules are located
 
+
+### Database Calls
+The Database handler(self, request : DataObject) -> DataObject should accept DataObjects and handle them according to the DataObjects.request : Request feild, returning a DataObject (can just use the DataObject.update method to update fields as necessary)
+- CHECK_USERNAME: DataObjects.data contains single string username
+    - return (Match, No Match, Error), username
+- CHECK_PASSWORD: DataObjects.data contains 2 strings username, password 
+    - return (Match, No Match, Error), username
+- CREATE_USER: DataObjects.data contains 2 strings username, password 
+    - return (Success, Match, Error) username
+    - match indicates duplicate username, and is treated as a rejection
+- GET_USERS: DataObjects.data contains some sort of matching pattern, ie (*, Like, In)
+    - Feel free to specify the semantics however you want
+    - return (Success, Error), number of users, list of users
+- Send Message: flag, message(sender, recipient, time, subject, text) 
+    - return flag, (Success, Error), id
+    - database should assign unique id to each message
+- Alert Message: flag, messages(sender, recipient, time, subject, text, read-boolean = false, id)
+    - return None
+    - From the server to the online user process. Choose to not consider success/failure
+    - Client should send confirm read afterwards
+- Get Message: flag, username, count
+    - return flag, (Success, Error), total messages, total unread, list of messages(sender, recipient, time, subject, text, read-boolean, id)
+    - unread should count the number unread in the database, including the currently sent messages as unread
+    - users may only see messages they received, not messages they sent, to make the reasoning about deletion easier 
+- Confirm Read: flag, id count, id list 
+    - return flag, (success, Error)
+- Delete message: flag, username, count retreive, count delete, id list
+    - return flag, (success, Error), total messages, total unread, list of messages(sender, recipient, time, subject, text, delivered-boolean, id)
+    - total messages and total unread should be after deletion
+- Delete user: flag, username
+    - return flag, (success, Error)
 
 ### Callables and Communication Flags
 The following commands should be supported

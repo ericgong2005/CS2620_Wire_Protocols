@@ -4,6 +4,9 @@ import json
 
 from Modules.Flags import Request, Status, EncodeType
 
+ENCODE_TYPE = EncodeType.JSON
+CURRENT_VERSION = "1.0"
+
 def byte_encode(input : bytes) -> bytes:
     '''
     Encode the string by replacing b"\n" with b"%1" and b"%" with b"%0"
@@ -42,7 +45,6 @@ def byte_decode(input : bytes) -> bytes:
 class DataObject:
     def __init__(self, 
                  method : Literal["args", "serial"] = "args", 
-                 encode_type : EncodeType = EncodeType.CUSTOM,
                  serial : bytes = b"", 
                  request : Request = Request.EMPTY, 
                  status : Status = Status.PENDING, 
@@ -50,22 +52,20 @@ class DataObject:
                  user: str = "",
                  datalen: int = 0,
                  data: list[str] = []):
+        self.encode_type = ENCODE_TYPE
+        self.version = CURRENT_VERSION
         if method == "serial":
-            self.encode_type = encode_type
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
             # Have 0 be the indicator for assigning a sequence number by the time of the current system
             sequence = int(time.time()) if sequence == 0 else sequence
-
-            self.encode_type = encode_type
             self.request = request
             self.status = status
             self.sequence = sequence
             self.user = user
             self.datalen = datalen
             self.data = data
-
             self.typecheck()
         else:
             raise Exception("Invalid DataObject Instantiation Method")
@@ -76,6 +76,8 @@ class DataObject:
         '''
         if not self.encode_type or not isinstance(self.encode_type, EncodeType):
             raise Exception("Invalid DataObject encoding method Detected")
+        if not self.version or not isinstance(self.version, str):
+            raise Exception("Invalid DataObject version Detected")
         if not self.request or not isinstance(self.request, Request):
             raise Exception("Invalid DataObject request Detected")
         if not self.status or not isinstance(self.status, Status):
@@ -90,7 +92,6 @@ class DataObject:
     
     def update(self, 
                  method : Literal["args", "serial"] = "args", 
-                 encode_type : EncodeType = None,
                  serial : bytes = b"", 
                  request : Request = None, 
                  status : Status = None, 
@@ -99,11 +100,9 @@ class DataObject:
                  datalen: int = None,
                  data: list[str] = None):
         if method == "serial":
-            self.encode_type = encode_type if encode_type else self.encode_type
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
-            self.encode_type = encode_type if encode_type else self.encode_type
             self.request = request if request else self.request
             self.status = status if status else self.status
             self.sequence = sequence if sequence else self.sequence
@@ -114,17 +113,16 @@ class DataObject:
         else:
             raise Exception("Invalid DataObject Update Method")
 
-    def serialize(self, use_encode_type : EncodeType = None):
+    def serialize(self):
         '''
         Serialize the object first removing "\n" from each field via encode, 
         joining feilds with "\n", removing "\n" once again via encode,
         then surrounding the entire bytestring with "\n"
         '''
         self.typecheck()
-
-        use_encode_type = use_encode_type if use_encode_type else self.encode_type
-        if use_encode_type == EncodeType.CUSTOM:
+        if self.encode_type == EncodeType.CUSTOM:
             serial_list = [
+                self.version.encode("utf-8"),
                 str(self.request.value).encode("utf-8"),
                 str(self.status.value).encode("utf-8"),
                 str(self.sequence).encode("utf-8"),
@@ -148,10 +146,11 @@ class DataObject:
                 serialized.extend(b"\n")
                 serialized.extend(byte_encode(entry))
 
-            final = b"\n" + str(EncodeType.CUSTOM.value).encode("utf-8") + byte_encode(bytes(serialized)) + b"\n"
+            final = b"\n" + byte_encode(bytes(serialized)) + b"\n"
             return final
-        if use_encode_type == EncodeType.JSON:
+        if self.encode_type == EncodeType.JSON:
             payload = {
+                "version": self.version,
                 "request": self.request.value,
                 "status": self.status.value,
                 "sequence": self.sequence,
@@ -159,7 +158,7 @@ class DataObject:
                 "datalen": self.datalen,
                 "data": self.data
             }
-            final = b"\n" + str(EncodeType.JSON.value).encode("utf-8") + json.dumps(payload).encode("utf-8") + b"\n"
+            final = json.dumps(payload).encode("utf-8")
             return final
 
     def deserialize(self, input : bytes):
@@ -167,48 +166,45 @@ class DataObject:
         update the object with the arguments provided in deserialize by reversing
         the steps used to serialize
         '''
-        if input[0] != ord("\n") or input[-1] != ord("\n"):
-            raise Exception("Invalid encoding: Newline Wrapper Missing")
-        
-        input = input[1:-1]
-        
-        decode_type = None
-        if input[0] == ord(str(EncodeType.CUSTOM.value)):
-            decode_type = EncodeType.CUSTOM
-        elif input[0] == ord(str(EncodeType.JSON.value)):
-            decode_type = EncodeType.JSON
-        else:
-            raise Exception("Invalid encoding: Encode Type Flag missing")
-    
-        input = input[1:]
 
-        if decode_type == EncodeType.CUSTOM:
+        if self.encode_type == EncodeType.CUSTOM:
+            if input[0] != ord("\n") or input[-1] != ord("\n"):
+                raise Exception("Invalid encoding: Newline Wrapper Missing")
+        
+            input = input[1:-1]
             input = byte_decode(input)
             lines = input.split(b"\n")
 
-            if len(lines) != 6:
+            self.version = (lines[0].decode("utf-8"))
+            if self.version != CURRENT_VERSION:
+                raise Exception("Invalid Encoding Version")
+
+            if len(lines) != 7:
                 raise Exception("Invalid encoding: Incorrect Fields")
 
-            self.request = Request(int(lines[0].decode("utf-8")))
-            self.status = Status(int(lines[1].decode("utf-8")))
-            self.sequence = int(lines[2].decode("utf-8"))
-            self.user = lines[3].decode("utf-8")
-            self.datalen = int(lines[4].decode("utf-8"))
+            self.request = Request(int(lines[1].decode("utf-8")))
+            self.status = Status(int(lines[2].decode("utf-8")))
+            self.sequence = int(lines[3].decode("utf-8"))
+            self.user = lines[4].decode("utf-8")
+            self.datalen = int(lines[5].decode("utf-8"))
             self.data = []
 
             if self.datalen == 0:
-                if lines[5] != b"0":
+                if lines[6] != b"0":
                     raise Exception("Invalid encoding: Incorrect Fields")
             else:
-                data = byte_decode(lines[5])
+                data = byte_decode(lines[6])
                 data = data.split(b"\n")
                 if len(data) != self.datalen:
                     raise Exception("Invalide encoding: Incorrect Data")
                 for item in data:
                     self.data.append(byte_decode(item).decode("utf-8"))
                     
-        elif decode_type == EncodeType.JSON:
+        elif self.encode_type == EncodeType.JSON:
             data = json.loads(input.decode("utf-8"))
+            self.version = data["version"]
+            if self.version != CURRENT_VERSION:
+                raise Exception("Invalid Encoding Version")
             self.request = Request(data["request"])
             self.status = Status(data["status"])
             self.sequence = data["sequence"]
@@ -230,7 +226,6 @@ class DataObject:
 class MessageObject:
     def __init__(self, 
                  method : Literal["args", "serial"] = "args", 
-                 encode_type : EncodeType = EncodeType.CUSTOM,
                  serial : bytes = b"", 
                  id : int = 0,
                  sender : str = "",
@@ -239,12 +234,12 @@ class MessageObject:
                  read : bool = False,
                  subject : str = "",
                  body : str = ""):
-        if method == "serial":
-            self.encode_type = encode_type
+        self.encode_type = ENCODE_TYPE
+        self.version = CURRENT_VERSION
+        if method == "serial":   
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
-            self.encode_type = encode_type
             self.id = id
             self.sender = sender
             self.recipient = recipient
@@ -252,7 +247,6 @@ class MessageObject:
             self.read = read
             self.subject = subject
             self.body  = body
-
             self.typecheck()
         else:
             raise Exception("Invalid MessageObject Instantiation Method")
@@ -263,6 +257,8 @@ class MessageObject:
         '''       
         if not self.encode_type or not isinstance(self.encode_type, EncodeType):
             raise Exception("Invalid MessageObject encoding method Detected")
+        if not self.version or not isinstance(self.version, str):
+            raise Exception("Invalid MessageObject version Detected")
         if self.id == None or not isinstance(self.id, int):
             raise Exception("Invalid MessageObject id Detected")
         if self.sender == None or not isinstance(self.sender, str) or len(self.sender) < 1:
@@ -281,7 +277,6 @@ class MessageObject:
     
     def update(self, 
                  method : Literal["args", "serial"] = "args", 
-                 encode_type : EncodeType = None,
                  serial : bytes = b"", 
                  id : int = None,
                  sender : str = None,
@@ -291,11 +286,9 @@ class MessageObject:
                  subject : str = None,
                  body : str = None):
         if method == "serial":
-            self.encode_type = encode_type if encode_type else self.encode_type
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
-            self.encode_type = encode_type if encode_type else self.encode_type
             self.id = id if id else self.id
             self.sender = sender if sender else self.sender
             self.recipient = recipient if recipient else recipient
@@ -308,7 +301,7 @@ class MessageObject:
             raise Exception("Invalid DataObject Update Method")
     
 
-    def serialize(self, use_encode_type : EncodeType = None):
+    def serialize(self):
         '''
         Serialize the object first removing "\n" from each field via encode, 
         joining feilds with "\n", removing "\n" once again via encode,
@@ -316,9 +309,9 @@ class MessageObject:
         '''
         self.typecheck()
 
-        use_encode_type = use_encode_type if use_encode_type else self.encode_type
-        if use_encode_type == EncodeType.CUSTOM:
+        if self.encode_type == EncodeType.CUSTOM:
             serial_list = [
+                self.version.encode("utf-8"),
                 str(self.id).encode("utf-8"),
                 self.sender.encode("utf-8"),
                 self.recipient.encode("utf-8"),
@@ -334,10 +327,11 @@ class MessageObject:
                 serialized.extend(b"\n")
                 serialized.extend(byte_encode(entry))
 
-            final = b"\n" + str(EncodeType.CUSTOM.value).encode("utf-8") + byte_encode(bytes(serialized)) + b"\n"
+            final = b"\n" + byte_encode(bytes(serialized)) + b"\n"
             return final
-        if use_encode_type == EncodeType.JSON:
+        if self.encode_type == EncodeType.JSON:
             payload = {
+                "version": self.version,
                 "id": self.id,
                 "sender": self.sender,
                 "recipient": self.recipient,
@@ -346,7 +340,7 @@ class MessageObject:
                 "subject": self.subject,
                 "body": self.body
             }
-            final = b"\n" + str(EncodeType.JSON.value).encode("utf-8") + json.dumps(payload).encode("utf-8") + b"\n"
+            final = json.dumps(payload).encode("utf-8")
             return final
 
     def deserialize(self, input : bytes):
@@ -354,38 +348,35 @@ class MessageObject:
         update the object with the arguments provided in deserialize by reversing
         the steps used to serialize
         '''
-        if input[0] != ord("\n") or input[-1] != ord("\n"):
-            raise Exception("Invalid encoding: Newline Wrapper Missing")
-        
-        input = input[1:-1]
-        
-        decode_type = None
-        if input[0] == ord(str(EncodeType.CUSTOM.value)):
-            decode_type = EncodeType.CUSTOM
-        elif input[0] == ord(str(EncodeType.JSON.value)):
-            decode_type = EncodeType.JSON
-        else:
-            raise Exception("Invalid encoding: Encode Type Flag missing")
-    
-        input = input[1:]
 
-        if decode_type == EncodeType.CUSTOM:
+        if self.encode_type == EncodeType.CUSTOM:
+            if input[0] != ord("\n") or input[-1] != ord("\n"):
+                raise Exception("Invalid encoding: Newline Wrapper Missing")
+            
+            input = input[1:-1]
             input = byte_decode(input)
             lines = input.split(b"\n")
-
-            if len(lines) != 7:
+            
+            self.version = (lines[0].decode("utf-8"))
+            if self.version != CURRENT_VERSION:
+                raise Exception("Invalid Encoding Version")
+            
+            if len(lines) != 8:
                 raise Exception("Invalid encoding: Incorrect Fields")
             
-            self.id = int(lines[0].decode("utf-8"))
-            self.sender = lines[1].decode("utf-8")
-            self.recipient = lines[2].decode("utf-8")
-            self.time_sent = lines[3].decode("utf-8")
-            self.read = bool(lines[4].decode("utf-8"))
-            self.subject = lines[5].decode("utf-8")
-            self.body  = lines[6].decode("utf-8")
+            self.id = int(lines[1].decode("utf-8"))
+            self.sender = lines[2].decode("utf-8")
+            self.recipient = lines[3].decode("utf-8")
+            self.time_sent = lines[4].decode("utf-8")
+            self.read = bool(lines[5].decode("utf-8"))
+            self.subject = lines[6].decode("utf-8")
+            self.body  = lines[7].decode("utf-8")
                     
-        elif decode_type == EncodeType.JSON:
+        elif self.encode_type == EncodeType.JSON:
             data = json.loads(input.decode("utf-8"))
+            self.version = data["version"]
+            if self.version != CURRENT_VERSION:
+                raise Exception("Invalid Encoding Version")
             self.id = data["id"]
             self.sender = data["sender"]
             self.recipient = data["recipient"]

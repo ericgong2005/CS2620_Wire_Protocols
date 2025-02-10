@@ -3,12 +3,15 @@ import sys
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 
+# run python client.py HOSTNAME PORTNAME
+
 class LoginClient:
     def __init__(self, server_socket):
         self.window = tk.Tk()
         self.server_socket = server_socket
         self.window.title("Login")
         self.create_login_ui()
+        self.window.protocol("WM_DELETE_WINDOW", self.close_connection)
         self.window.mainloop()
     
     def create_login_ui(self):
@@ -21,7 +24,7 @@ class LoginClient:
         self.username_button.pack()
 
         self.password_label = tk.Label(self.window, text="Password:")
-        self.password_entry = tk.Entry(self.window)
+        self.password_entry = tk.Entry(self.window, show="*")
         self.password_button = tk.Button(self.window, text="Submit Password", command=self.send_password)
     
     def send_username(self):
@@ -74,11 +77,15 @@ class LoginClient:
         if response == "Logged In":
             messagebox.showinfo("Success", "Login Successful!")
             self.window.destroy()
-            # ChatWindow(self.server_socket)  # Open chat window
+            ChatClient(self.server_socket)
         elif response == "Wrong Password":
             messagebox.showerror("Login Failed", "Wrong password!")
         else:
             messagebox.showerror("Error", "Unexpected server response.")
+
+    def close_connection(self):
+        self.server_socket.close()
+        self.window.destroy()
 
 
 class RegisterClient:
@@ -87,6 +94,7 @@ class RegisterClient:
         self.server_socket = server_socket
         self.window.title("Register")
         self.create_register_ui()
+        self.window.protocol("WM_DELETE_WINDOW", self.close_connection)
         self.window.mainloop()
 
     def create_register_ui(self):
@@ -98,12 +106,12 @@ class RegisterClient:
 
         self.password_label = tk.Label(self.window, text="Password:")
         self.password_label.pack()
-        self.password_entry = tk.Entry(self.window)
+        self.password_entry = tk.Entry(self.window, show="*")
         self.password_entry.pack()
 
         self.confirm_password_label = tk.Label(self.window, text="Confirm Password")
         self.confirm_password_label.pack()
-        self.confirm_password_entry = tk.Entry(self.window)
+        self.confirm_password_entry = tk.Entry(self.window, show="*")
         self.confirm_password_entry.pack()
 
         self.confirm_password_button = tk.Button(self.window, text="Register", command=self.send_new_user)
@@ -137,7 +145,7 @@ class RegisterClient:
         if response == "Success":
             messagebox.showinfo("Success", "Registration Successful!")
             self.window.destroy()
-            LoginClient(server_socket)
+            LoginClient(self.server_socket)
         elif response == "Exists":
             messagebox.showwarning("Error", "Username already exists.")
             return
@@ -146,10 +154,76 @@ class RegisterClient:
         else:
            messagebox.showerror("Error", "Unexpected server response.") 
 
-class ChatClient:
-    pass
+    def close_connection(self):
+        self.server_socket.close()
+        self.window.destroy()
 
-# run python client.py HOSTNAME PORTNAME
+
+class ChatClient:
+    def __init__(self, server_socket):
+        self.window = tk.Tk()
+        self.server_socket = server_socket
+        self.window.title("Chat")
+        self.create_chat_ui()
+        self.window.protocol("WM_DELETE_WINDOW", self.close_connection)
+        self.window.mainloop()
+    
+    def create_chat_ui(self):
+        self.chat_area = scrolledtext.ScrolledText(self.window, wrap=tk.WORD, state=tk.DISABLED, height=15, width=50)
+        self.chat_area.pack(pady=10)
+
+        self.message_entry = tk.Entry(self.window, width=40)
+        self.message_entry.pack(pady=5, side=tk.LEFT)
+        self.send_button = tk.Button(self.window, text="Send", command=self.send_message)
+        self.send_button.pack(pady=5, side=tk.RIGHT)
+        self.check_user_status()
+
+    def check_user_status(self):
+        response = server_socket.recv(1024).decode("utf-8")
+        self.display_message(response)
+        if response == "Logged In":
+            messagebox.showinfo("Success", "Logged In")
+        elif response == "Duplicate":
+            messagebox.showerror("Error", "Already Logged In Elsewhere")
+            self.window.destroy()
+            LoginClient(self.server_socket)
+            return
+        else:
+            messagebox.showerror("Error", "Login Failed")
+            self.window.destroy()
+            LoginClient(self.server_socket)
+            return
+    
+    def send_message(self):
+        message = self.message_entry.get()
+
+        if not message:
+            messagebox.showwarning("Input Error", "Message cannot be empty!")
+            return
+        
+        self.server_socket.sendall(message.encode("utf-8"))
+        self.display_message(f"You: {message}")
+        self.message_entry.delete(0, tk.END)
+
+        response = self.server_socket.recv(1024)
+        if not response:
+            messagebox.showerror("Server Error", "Connection closed by server. Please restart the app.")
+            self.window.destroy()
+            return
+        response = response.decode("utf-8")
+        print(f"Received {response}")
+        self.display_message(f"Server: {response}")
+    
+    def display_message(self, response):
+        self.chat_area.config(state=tk.NORMAL)
+        self.chat_area.insert(tk.END, response + "\n")
+        self.chat_area.config(state=tk.DISABLED)
+        self.chat_area.yview(tk.END)
+
+    def close_connection(self):
+        self.server_socket.close()
+        self.window.destroy()
+
 
 def client_user(server_socket, username):
     data = server_socket.recv(1024)

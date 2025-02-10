@@ -25,6 +25,15 @@ def client_user(server_socket, username):
             print("Connection closed by the server.")
             return
         data = data.decode("utf-8")
+        # Hacky way to recieve another message
+        temp = data.split(" ")
+        if temp[0] == "Ping" and len(data.split()) == 3:
+            print(f"{data}")
+            data = server_socket.recv(1024)
+            if not data:
+                print("Connection closed by the server.")
+                return
+            data = data.decode("utf-8")
         print(f"Received: {data}")
 
 def client_create_user(server_socket):

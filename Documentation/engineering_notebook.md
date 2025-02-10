@@ -1,6 +1,7 @@
 # Engineering Notebook
 
 ## Contents
+- Quick notes
 - Planning
 - Changes
 - Code Version logs
@@ -8,12 +9,16 @@
 - Planning Version 2
 - Planning Verison 3
 
+## Quick Notes
+- Remember to hash the password
+- Remember to implement an event waiting on the database process startup
 
 ## Planning
 We split the plan down into a couple modularized and separate implementations. This will ensure that each portion can be changed with minimal impact on other components, as well increase our ability to remain organized.
 
 ### Key Components:
 - Organization
+- Callables and Communication Flags
 - Database
 - Client-Server communication setup
 - Logins
@@ -26,6 +31,65 @@ We split the plan down into a couple modularized and separate implementations. T
 - Put tests into Tests folder, also a package
 - tests.py to run tests in the Test folder
 - server_daemon.py and client.py in the Code folder where Tests and Modules are located
+
+
+### Callables and Communication Flags
+The following commands should be supported
+- Check Username: flag, username, 
+    - return flag, (Match, No Match, Error) username or error message
+- Check Password: flag, username, password 
+    - return flag, (Match, No Match, Error) username or error message
+- Create New User: flag, username, password 
+    - return flag, (Success, Match, Error) username or error message
+    - match indicates duplicate username
+- Confirm Login (when starting user process): flag, username 
+    - return flag, (Success, Error) username or error message
+- Logout (from client to user process): flag, username
+    - return none, user process kills itself upon receipt
+- Get Online Users: flag, 
+    - return flag (Success, Error), list of online users
+- Get Users: flag, type (All, Like pattern, In list of users)
+    - return flag (Success, Error), number of users, list of users
+- Send Message: flag, message(sender, recipient, time, subject, text) 
+    - return flag, (Success, Error), id
+    - database should assign unique id to each message
+- Alert Message: flag, messages(sender, recipient, time, subject, text, read-boolean = false, id)
+    - return None
+    - From the server to the online user process. Choose to not consider success/failure
+    - Client should send confirm read afterwards
+- Get Message: flag, username, count
+    - return flag, (Success, Error), total messages, total unread, list of messages(sender, recipient, time, subject, text, read-boolean, id)
+    - unread should count the number unread in the database, including the currently sent messages as unread
+    - users may only see messages they received, not messages they sent, to make the reasoning about deletion easier 
+- Confirm Delivered: flag, id count, id list 
+    - return flag, (success, Error)
+- Delete message: flag, username, count retreive, count delete, id list
+    - return flag, (success, Error), total messages, total unread, list of messages(sender, recipient, time, subject, text, delivered-boolean, id)
+    - total messages and total unread should be after deletion
+- Delete user: flag, username
+    - return flag, (success, Error)
+
+We need a data object with the following feilds:
+- Request Flag: matching with the possible operations, plus an Empty flag
+- Status Flag: In_Action (for inputs), Success, Match, No_Match, Error
+- User: username for issuer or target
+- Data length: expected length of the data
+- Data: string array
+
+We need a Message object with the following feilds:
+- id (-1 when initially sent)
+- read boolean
+- sender
+- recipient
+- time
+- subject
+- message
+
+Serializer:
+- For the custom serializer, we can denote breaks with "\", and encode in-text "\" as "%1", and in-text "%" as "%0"
+- we first serialize fields individually, joining them with "\" then serialize again, appending "\" to the start and end so that the start and end of a single transmission is clear.
+
+
 
 ### Database:
 - access everything using SQLite on .db files

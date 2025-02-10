@@ -3,23 +3,12 @@ import atexit
 import signal
 import sys
 from pathlib import Path
-from multiprocessing.connection import Connection
 
 from Modules.constants import Status, DB
+from Modules.data_objects import QueryObject, ResponseObject
 
 PASSWORD_DATABASE = Path(__file__).parent.parent / "User_Data/passwords.db"
 PASSWORD_DATABASE_SCHEMA = "Passwords(Username TEXT PRIMARY KEY, Password TEXT NOT NULL)"
-
-class QueryObject:
-    def __init__(self, request : DB, username: str, data : list[str], pipe : Connection, pid : int):
-        self.request = request
-        self.username = username
-        self.data = data
-        self.pipe = pipe
-        self.pid = pid
-    
-    def to_string(self) -> str:
-        return f"{self.request} with {self.data} from {self.username} {self.pid}, pipe: {self.pipe}"
 
 class DatabaseManager:
     def __init__(self):
@@ -74,6 +63,7 @@ class DatabaseManager:
         return (Status.SUCCESS, result[0]) if result else (Status.NOT_FOUND, None)
     
     def handler(self, request : QueryObject) -> tuple[Status, str]:
+        print(f"Handler Recieved {request.to_string()}")
         match request.request:
             case DB.CHECK_USERNAME:
                 status, true_password = self.get_password(request.data[0])

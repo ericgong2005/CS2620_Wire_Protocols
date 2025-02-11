@@ -10,22 +10,30 @@ from Modules.selector_data import SelectorData
 # run python client.py HOSTNAME PORTNAME
 
 def client_user(server_socket, username):
-    data = server_socket.recv(1024)
-    if not data:
+    data_buffer = b""
+    recieved = False
+    while not recieved:
+        data = server_socket.recv(1024)
+        if not data:
             print("Connection closed by the server.")
             return
-    response = DataObject(method="serial", serial=data)
-    if response.request != Request.CONFIRM_LOGIN:
-        print("Unexpected Communication, Login Failed")
-        return
-    if response.status == Status.SUCCESS:
-        print("Logged In")
-    elif response.status == Status.MATCH:
-        print("Already Logged In Elsewhere")
-        return
-    else:
-        print("Login Failed")
-        return
+        data_buffer += data
+        serial, data_buffer = DataObject.get_one(data_buffer)
+        if serial != b"":
+            recieved = True
+            response = DataObject(method="serial", serial=serial)
+            print(f"{response.to_string()}")
+            if response.request != Request.CONFIRM_LOGIN:
+                print("Unexpected Communication, Login Failed")
+                return
+            if response.status == Status.SUCCESS:
+                print("Logged In")
+            elif response.status == Status.MATCH:
+                print("Already Logged In Elsewhere")
+                return
+            else:
+                print("Login Failed")
+                return
     
     # Use selectors to allow for polling instead of blocking
     client_selector = selectors.DefaultSelector()
@@ -49,10 +57,11 @@ def client_user(server_socket, username):
             iso_time = current_time.isoformat(timespec='seconds')
             message = MessageObject(sender=username, recipient=recipient, time=iso_time, subject=subject, body=body)
             message_string = message.serialize().decode("utf-8")
-            # print(f"Sending Message: {message.to_string()}")
             request.update(request=Request.SEND_MESSAGE, datalen=1, data=[message_string])
         else:
             request.update(request=Request.ALERT_MESSAGE, datalen=1, data=[command])
+        
+        print(f"Sending {request.to_string()}")
 
         server_socket.sendall(request.serialize())
 
@@ -60,16 +69,16 @@ def client_user(server_socket, username):
         events = client_selector.select(timeout=None)
         for key, mask in events:
             if mask & selectors.EVENT_READ:
-                while True:
-                    try:
-                        data = key.fileobj.recv(1024)
-                        if not data:
-                            print("Connection closed by the server.")
-                            return
-                        response = DataObject(method="serial", serial=data)
-                        print(response.to_string()) 
-                    except BlockingIOError:
-                        break
+                data = key.fileobj.recv(1024)
+                if not data:
+                    print("Connection closed by the server.")
+                    return
+                key.data.inbound += data
+                serial, key.data.inbound = DataObject.get_one(key.data.inbound)
+                while serial != b"":
+                    response = DataObject(method="serial", serial=serial)
+                    print(response.to_string()) 
+                    serial, key.data.inbound = DataObject.get_one(key.data.inbound)
                     
 
 def client_create_user(server_socket):
@@ -85,62 +94,82 @@ def client_create_user(server_socket):
         else:
             continue
 
-        data = server_socket.recv(1024)
-        if not data:
-            print("Connection closed by the server.")
-            return
-        response = DataObject(method="serial", serial=data)
-        # print(f"Recieved {response.to_string()}")
-        if response.status == Status.SUCCESS:
-            print(f"Created User with Username: {username}, Password: {password}")
-            return
-        elif response.status == Status.MATCH:
-            print("User Exists.")
-            return
-        else:
-            print("Error")
+        recieved = False
+        data_buffer = b""
+        while not recieved:
+            data = server_socket.recv(1024)
+            if not data:
+                print("Connection closed by the server.")
+                return
+            data_buffer += data
+            serial, data_buffer = DataObject.get_one(data_buffer)
+            if serial != b"":
+                recieved = True
+                response = DataObject(method="serial", serial=serial)
+                if response.status == Status.SUCCESS:
+                    print(f"Created User with Username: {username}, Password: {password}")
+                    return
+                elif response.status == Status.MATCH:
+                    print("User Exists.")
+                    return
+                else:
+                    print("Error")
 
 def client_login(server_socket):
+    data_buffer = b""
     username = ""
-    while True:
+    in_login = True
+    while in_login:
         print("Login:")
         username = input("Enter Username: ")
+        print(username)
         request = DataObject(request=Request.CHECK_USERNAME, datalen=1, data=[username])
+        print(f"Sending: {request.to_string()}")
         server_socket.sendall(request.serialize())
-
-        data = server_socket.recv(1024)
-        if not data:
-            print("Connection closed by the server.")
-            return
-        response = DataObject(method="serial", serial=data)
-        # print(f"Recieved {response.to_string()}")
-        if response.status == Status.MATCH:
-            break
-        elif response.status == Status.NO_MATCH:
-            print("No such username exists")
-            client_create_user(server_socket)
-        else:
-            print("Error")
+        recieved = False
+        while not recieved:
+            data = server_socket.recv(1024)
+            if not data:
+                print("Connection closed by the server.")
+                return
+            data_buffer += data
+            serial, data_buffer = DataObject.get_one(data_buffer)
+            if serial != b"":
+                recieved = True
+                response = DataObject(method="serial", serial=serial)
+                # print(f"Recieved {response.to_string()}")
+                if response.status == Status.MATCH:
+                    in_login = False
+                elif response.status == Status.NO_MATCH:
+                    print("No such username exists")
+                    client_create_user(server_socket)
+                else:
+                    print("Error")
     
     password = ""
     while True:
         password = input("Enter Password: ")
         request = DataObject(request=Request.CHECK_PASSWORD, datalen = 2, data = [username, password])
         server_socket.sendall(request.serialize())
-
-        data = server_socket.recv(1024)
-        if not data:
-            print("Connection closed by the server.")
-            return
-        response = DataObject(method="serial", serial=data)
-        if response.status == Status.MATCH:
-            print("Logging In")
-            client_user(server_socket, username)
-            break
-        elif response.status == Status.NO_MATCH:
-            print("Wrong Password")
-        else:
-            print("Error")
+        recieved = False
+        while not recieved:
+            data = server_socket.recv(1024)
+            if not data:
+                print("Connection closed by the server.")
+                return
+            data_buffer += data
+            serial, data_buffer = DataObject.get_one(data_buffer)
+            if serial != b"":
+                recieved = True
+                response = DataObject(method="serial", serial=serial)
+                if response.status == Status.MATCH:
+                    print("Logging In")
+                    client_user(server_socket, username)
+                    return
+                elif response.status == Status.NO_MATCH:
+                    print("Wrong Password")
+                else:
+                    print("Error")
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:

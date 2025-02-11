@@ -89,10 +89,14 @@ def database_process(host, database_port, database_start):
                     if mask & selectors.EVENT_READ:
                         recieve = cur_socket.recv(1024)
                         if recieve:
-                            request = DataObject(method="serial", serial=recieve)
-                            print(f"Database recieved Request: {request.to_string()}")
-                            response = database_request_handler(db, request, key, online_username, online_address)
-                            key.data.outbound.put(response.serialize())
+                            key.data.inbound += recieve
+                            serial, key.data.inbound = DataObject.get_one(key.data.inbound)
+                            print(serial, key.data.inbound)
+                            if serial != b"":
+                                request = DataObject(method="serial", serial=serial)
+                                print(f"Database recieved Request: {request.to_string()}")
+                                response = database_request_handler(db, request, key, online_username, online_address)
+                                key.data.outbound.put(response.serialize())
                         else:
                             print(f"Database closing connection to {key.data.address}")
                             if address_string in online_address:
@@ -141,9 +145,8 @@ def user_process(client_connection, address, database, user_start, username) :
         user_selector.close()
         return
 
-    logged_in = False
-
     # Wait for confirmation of Login (Ignore all other communications until the login is confirmed)
+    logged_in = False
     try:
         while not logged_in:
             events = user_selector.select(timeout=None)
@@ -153,18 +156,21 @@ def user_process(client_connection, address, database, user_start, username) :
                     database_raw = keys["database"].fileobj.recv(1024)
                     if not database_raw:
                         raise Exception(f"Connection Closed By {source}")
-                    database_response = DataObject(method="serial", serial=database_raw)
-                    print(f"User Process {os.getpid()} recieved {database_response.to_string()}")
-                    if database_response.request != Request.CONFIRM_LOGIN:
-                        continue
-                    if database_response.status == Status.SUCCESS:
-                        logged_in = True
-                    keys["client"].fileobj.sendall(database_response.serialize())
-                    if not logged_in:
-                        raise Exception("Not Logged In")                
+                    keys["database"].data.inbound += database_raw
+                    serial, keys["database"].data.inbound = DataObject.get_one(keys["database"].data.inbound)
+                    print(serial, keys["database"].data.inbound)
+                    if serial != b"":
+                        database_response = DataObject(method="serial", serial=serial)
+                        print(f"User Process {os.getpid()} recieved {database_response.to_string()}")
+                        if database_response.request != Request.CONFIRM_LOGIN:
+                            continue
+                        if database_response.status == Status.SUCCESS:
+                            logged_in = True
+                        keys["client"].fileobj.sendall(database_response.serialize())
+                        if not logged_in:
+                            raise Exception("Not Logged In")                
     except Exception as e:
         print(f"Error in User process {os.getpid()} when confirming login:", e)
-
     
     # Messages as usual
     try:
@@ -177,19 +183,28 @@ def user_process(client_connection, address, database, user_start, username) :
                         raw_client = keys["client"].fileobj.recv(1024)
                         if not raw_client:
                             raise Exception("Connection closed by client")
-                        client_request = DataObject(method="serial", serial=raw_client)
-                        if client_request.request == Request.GET_ONLINE_USERS:
-                            request = DataObject(request=Request.GET_ONLINE_USERS, user=username)
-                            keys["database"].data.outbound.put(request.serialize())
-                            print(f"{keys["database"].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
-                        elif client_request.request == Request.SEND_MESSAGE:
-                            request = DataObject(request=Request.SEND_MESSAGE, user=username, datalen=1, data = client_request.data)
-                            keys["database"].data.outbound.put(request.serialize())
-                            print(f"{keys["database"].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
-                        else:
-                            client_request.update(status=Status.SUCCESS)
-                            keys["client"].data.outbound.put(client_request.serialize())
-                            print(f"{keys["client"].data.outbound.empty()} Outgoing to {source}: {client_request.to_string()}")
+                        keys["client"].data.inbound += raw_client
+                        serial, keys["client"].data.inbound = DataObject.get_one(keys["client"].data.inbound)
+                        if serial != b"":
+                            client_request = DataObject(method="serial", serial=serial)
+                            if client_request.request == Request.GET_ONLINE_USERS:
+                                request = DataObject(request=Request.GET_ONLINE_USERS, user=username)
+                                keys["database"].data.outbound.put(request.serialize())
+                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
+                            elif client_request.request == Request.SEND_MESSAGE:
+                                request = DataObject(request=Request.SEND_MESSAGE, user=username, datalen=1, data = client_request.data)
+                                keys["database"].data.outbound.put(request.serialize())
+                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
+                            elif client_request.request == Request.CONFIRM_LOGOUT:
+                                # Could implement some logout processing
+                                break
+                            # elif client_request.request in [Request.CHECK_USERNAME, Request.CHECK_PASSWORD, Request.CONFIRM_LOGIN]:
+                            #     raise Exception("Unexpected Communication Flag")
+                            else:
+                                client_request.update(status=Status.SUCCESS)
+                                keys["client"].data.outbound.put(client_request.serialize())
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}: {client_request.to_string()}")
+
                     if mask & selectors.EVENT_WRITE and not key.data.outbound.empty():
                         message = key.data.outbound.get()
                         key.fileobj.sendall(message)
@@ -198,29 +213,20 @@ def user_process(client_connection, address, database, user_start, username) :
                         database_raw = keys["database"].fileobj.recv(1024)
                         if not database_raw:
                             raise Exception("Connection Closed By Server")
-
-                        if not key.data.inbound.empty():
-                            prev = key.data.inbound.get()
-                            database_raw = prev + database_raw
-                        
-                        raw_list = database_raw.split(b"\n")
-
-                        for item in raw_list:
-                            if item:
-                                message = b"\n" + item + b"\n"
-                            else:
-                                continue
-                            database_response = DataObject(method="serial", serial=message)
+                        keys["database"].data.inbound += database_raw
+                        serial, keys["database"].data.inbound = DataObject.get_one(keys["database"].data.inbound)
+                        if serial != b"":
+                            database_response = DataObject(method="serial", serial=serial)
                             print(f"User Process {os.getpid()} recieved {database_response.to_string()}")
                             if database_response.request == Request.GET_ONLINE_USERS:
                                 keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys["client"].data.outbound.empty()} Outgoing to {source}")
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
                             if database_response.request == Request.SEND_MESSAGE:
                                 keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys["client"].data.outbound.empty()} Outgoing to {source}")
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
                             if database_response.request == Request.ALERT_MESSAGE:
                                 keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys["client"].data.outbound.empty()} Outgoing to {source}")
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
 
                     if mask & selectors.EVENT_WRITE and not key.data.outbound.empty():
                         message = key.data.outbound.get()
@@ -242,73 +248,88 @@ def login_process(client_connection, address, database):
     database_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     database_socket.connect(database)
 
+    client_buffer = b""
+    database_buffer = b""
+
     try:
         print(f"Login process {os.getpid()} handling connection from {address}")
-
-        while True:
+        password_confirmed = False
+        while not password_confirmed:
             data = client_connection.recv(1024)
-
             # Check if connection closed by client
             if not data:
-                break  
+                raise Exception("Connection closed by the server.")
+            client_buffer += data
+            serial, client_buffer = DataObject.get_one(client_buffer)
+            if serial != b"":
+                user_request = DataObject(method="serial", serial=serial)
+                print(f"Login process {os.getpid()} got data {user_request.to_string()}")
+                if user_request.request == Request.CHECK_USERNAME:
+                    request = user_request
+                    database_socket.sendall(request.serialize())
+                    database_responded = False
+                    database_buffer = b""
+                    while not database_responded:
+                        database_raw = database_socket.recv(1024)
+                        if not database_raw:
+                            raise Exception("Connection closed by the database.")
+                        database_buffer += database_raw
+                        serial, database_buffer = DataObject.get_one(database_buffer)
+                        if serial != b"":
+                            database_responded = True
+                            database_response = DataObject(method="serial", serial=serial)
+                            print(f"Login Process {os.getpid()} recieved from database: {database_response.to_string()}")
+                            if database_response.status == Status.MATCH and database_response.data[0] == user_request.data[0]:
+                                username = database_response.data[0]
+                            user_request = database_response
+                elif user_request.request == Request.CHECK_PASSWORD:
+                    if not username:
+                        user_request.update(status=Status.ERROR)
+                    else:
+                        request = user_request
+                        database_socket.sendall(request.serialize())
 
-            user_request = DataObject(method="serial", serial=data)
-            print(f"Login process {os.getpid()} got data {user_request.to_string()}")
-            if user_request.request == Request.CHECK_USERNAME:
-                request = user_request
-                database_socket.sendall(request.serialize())
-                database_raw = database_socket.recv(1024)
-                if not database_raw:
-                    print("Connection closed by the server.")
-                    break
-                database_response = DataObject(method="serial", serial=database_raw)
-                print(f"Login Process {os.getpid()} recieved from database: {database_response.to_string()}")
-                if database_response.status == Status.MATCH and database_response.data[0] == user_request.data[0]:
-                    username = database_response.data[0]
-                user_request = database_response
-            elif user_request.request == Request.CHECK_PASSWORD:
-                if not username:
-                    user_request.update(status=Status.ERROR)
-                else:
-                    request = user_request
-                    database_socket.sendall(request.serialize())
-                    try:
-                        database_raw = database_socket.recv(1024)
-                        if not database_raw:
-                            print("Connection closed by the server.")
-                            break
-                        database_response = DataObject(method="serial", serial=database_raw)
-                        print(f"Login Process {os.getpid()} recieved from database: {database_response.to_string()}")
-                    except Exception as e:
-                        print("User process failed to receive response from database due to", e)
-                        break
-                    user_request = database_response
-                    if database_response.status == Status.MATCH:
-                        user_start =  mp.Event()
-                        client_user = mp.Process(target=user_process, args=(client_connection, address, database, user_start, username))
-                        client_user.start()
-                        user_start.wait()
-                        print(f"Login Process {os.getpid()} sends: {user_request.to_string()}")
-                        client_connection.sendall(user_request.serialize())
-                        break
-            elif user_request.request == Request.CREATE_USER:
-                if not user_request.data[0] or not user_request.data[1]:
-                    user_request.update(status=Status.ERROR)
-                else:
-                    request = user_request
-                    database_socket.sendall(request.serialize())
-                    try:
-                        database_raw = database_socket.recv(1024)
-                        if not database_raw:
-                            print("Connection closed by the server.")
-                            break
-                        database_response = DataObject(method="serial", serial=database_raw)
-                        print(f"Login Process {os.getpid()} recieved from database: {database_raw}")
-                    except Exception as e:
-                        print("User process failed to receive response from database due to", e)
-                        break
-                    user_request = database_response
-            client_connection.sendall(user_request.serialize())
+                        database_responded = False
+                        database_buffer = b""
+                        while not database_responded:
+                            database_raw = database_socket.recv(1024)
+                            if not database_raw:
+                                raise Exception("Connection closed by the database.")
+                            database_buffer += database_raw
+                            serial, database_buffer = DataObject.get_one(database_buffer)
+                            if serial != b"":
+                                database_responded = True
+                                database_response = DataObject(method="serial", serial=serial)
+                                print(f"Login Process {os.getpid()} recieved from database: {database_response.to_string()}")
+                                user_request = database_response
+                                if database_response.status == Status.MATCH:
+                                    user_start =  mp.Event()
+                                    client_user = mp.Process(target=user_process, args=(client_connection, address, database, user_start, username))
+                                    client_user.start()
+                                    user_start.wait()
+                                    password_confirmed = True
+                elif user_request.request == Request.CREATE_USER:
+                    if not user_request.data[0] or not user_request.data[1]:
+                        user_request.update(status=Status.ERROR)
+                    else:
+                        request = user_request
+                        database_socket.sendall(request.serialize())
+                        
+                        request = user_request
+                        database_responded = False
+                        database_buffer = b""
+                        while not database_responded:
+                            database_raw = database_socket.recv(1024)
+                            if not database_raw:
+                                raise Exception("Connection closed by the server.")
+                            database_buffer += database_raw
+                            serial, database_buffer = DataObject.get_one(database_buffer)
+                            if serial != b"":
+                                database_responded = True
+                                database_response = DataObject(method="serial", serial=serial)
+                                user_request = database_response
+                print(f"Login Process {os.getpid()} sends: {user_request.to_string()}")
+                client_connection.sendall(user_request.serialize())
     except Exception as e:
         print(f"Error in login process {os.getpid()}:", e)
     finally:

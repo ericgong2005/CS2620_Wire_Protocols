@@ -213,6 +213,37 @@ class DataObject:
             self.data = data["data"]
 
         self.typecheck()
+
+    @staticmethod
+    def get_one(input : bytes) -> tuple[bytes, bytes]:
+        if not input or input == b"":
+            return (b"",b"")
+        if ENCODE_TYPE == EncodeType.CUSTOM:
+            if input[0] != ord("\n"):
+                raise Exception("Invalid Initial Byte")
+            split_point = input.find(b"\n\n")
+            if split_point == -1:
+                if input[-1] == b"\n":
+                    return (input, b"")
+                else:
+                    return (b"", input)
+            else:
+                first = input[:split_point + 1]
+                rest = input[split_point + 1:]
+                return first, rest
+        elif ENCODE_TYPE == EncodeType.JSON:
+            if input[0] != ord("{"):
+                raise Exception("Invalid Initial Byte")
+            depth = 0
+            for i, byte in enumerate(input):
+                char = chr(byte)
+                if char == '{':
+                    depth += 1
+                elif char == '}':
+                    depth -= 1
+                if depth == 0:
+                    return (input[:i+1], input[i+1:])
+            return (b"", input)
     
     def to_string(self):
         return (f"\nDataObject uses {self.encode_type}, and contains:\n" +

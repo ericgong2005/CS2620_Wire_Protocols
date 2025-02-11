@@ -1,5 +1,4 @@
 from Modules.DataObjects import DataObject, MessageObject, byte_decode, byte_encode
-from Modules.Flags import EncodeType
 
 def tests():
     
@@ -20,17 +19,19 @@ def tests():
     t3 = DataObject(method="serial", serial = t2.serialize())
     print(t3.to_string())
 
-    u = DataObject(encode_type=EncodeType.JSON)
+    u = DataObject()
     print(u.serialize())
 
-    tjson = DataObject(encode_type=EncodeType.JSON, datalen = 2, data = ["hello\nhello\n100%\n\n", "你好\n"])
+    tjson = DataObject(datalen = 2, data = ["hello\nhello\n100%\n\n", "你好\n"])
     print(tjson.serialize())
 
-    print("Test cross-method deserialization")
-    t2.deserialize(tjson.serialize())
-    print(t2.to_string())
-    u.deserialize(t.serialize())
-    print(u.to_string())
+    print("Test get_one()")
+    data = tjson.serialize()
+    print(DataObject.get_one(b""))
+    print(DataObject.get_one(data[:8]))
+    print(DataObject.get_one(data))
+    print(DataObject.get_one(data + data[:8]))
+    print(DataObject.get_one(data + data))
 
     mt = MessageObject(sender="Me", recipient="You", time="Today", subject="test")
     print(mt.to_string())
@@ -42,14 +43,8 @@ def tests():
     mt3 = MessageObject(method="serial", serial = mt2.serialize())
     print(mt3.to_string())
 
-    mu = MessageObject(encode_type=EncodeType.JSON, sender="Me", recipient="You")
+    mu = MessageObject(sender="Me", recipient="You")
     print(mu.serialize())
 
-    mtjson = MessageObject(encode_type=EncodeType.JSON, sender="Me", recipient="You", time="Today", subject="test")
+    mtjson = MessageObject(sender="Me", recipient="You", time="Today", subject="test")
     print(mtjson.serialize())
-
-    print("Test cross-method deserialization")
-    mt2.deserialize(mtjson.serialize())
-    print(mt2.to_string())
-    mu.deserialize(mt.serialize())
-    print(mu.to_string())

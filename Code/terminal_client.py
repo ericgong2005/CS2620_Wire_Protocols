@@ -49,10 +49,16 @@ def client_user(server_socket, username):
         request = DataObject(user=username)
         if lines[0] == "get":
             request.update(request=Request.GET_ONLINE_USERS)
+        if lines[0] == "msg":
+            request.update(request=Request.GET_MESSAGE, datalen=2, data=[lines[1], lines[2]])
         elif lines[0] == "users":
             request.update(request=Request.GET_USERS, datalen=1, data = ["All"])
         elif lines[0] == "like":
             request.update(request=Request.GET_USERS, datalen=2, data = ["Like", lines[1]])
+        elif lines[0] == "delete":
+            request.update(request=Request.DELETE_USER)
+        elif lines[0] == "logout":
+            request.update(request=Request.CONFIRM_LOGOUT)
         elif lines[0] == "message":
             recipient = input("Send Message To: ")
             subject = input("Enter Message Subject: ")
@@ -81,6 +87,8 @@ def client_user(server_socket, username):
                 serial, key.data.inbound = DataObject.get_one(key.data.inbound)
                 while serial != b"":
                     response = DataObject(method="serial", serial=serial)
+                    if response.request in [Request.DELETE_USER, Request.CONFIRM_LOGOUT] :
+                        return
                     print(response.to_string()) 
                     serial, key.data.inbound = DataObject.get_one(key.data.inbound)
                     

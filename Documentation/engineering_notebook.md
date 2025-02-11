@@ -51,6 +51,7 @@ The Database handler(self, request : DataObject) -> DataObject should accept Dat
 - Send Message: flag, message(sender, recipient, time, subject, text) 
     - return flag, (Success, Error), id
     - database should assign unique id to each message
+    - If the recipient does not exist, redirect the message to the sender
 - Alert Message: flag, messages(sender, recipient, time, subject, text, read-boolean = false, id)
     - return None
     - From the server to the online user process. Choose to not consider success/failure

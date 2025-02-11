@@ -32,13 +32,14 @@ def database_request_handler(db : DatabaseManager,
         message_raw = request.data[0]
         message = MessageObject(method="serial", serial = message_raw.encode("utf-8"))
         print(f"Database Processing Message: {message.to_string()}")
-        if message.recipient in online_username:
+        
+        request = db.handler(request)
+        print(request.to_string())
+        if request.status == Status.SUCCESS and message.recipient in online_username:
             target_key = online_username[message.recipient]
-            request.update(request=Request.ALERT_MESSAGE, status=Status.PENDING, datalen=1, data = [message_raw])
+            request.update(request=Request.ALERT_MESSAGE, status=Status.PENDING)
             target_key.data.outbound.put(request.serialize())
-            request.update(request=Request.SEND_MESSAGE, status=Status.SUCCESS, datalen=0, data=[])
-        else:
-            request.update(request=Request.SEND_MESSAGE, status=Status.ERROR)
+            request.update(request=Request.SEND_MESSAGE, status=Status.SUCCESS)
     else:
         request = db.handler(request)
         print(f"Handler Responds with {request.to_string()}")
@@ -196,12 +197,20 @@ def user_process(client_connection, address, database, user_start, username) :
                                 keys["database"].data.outbound.put(request.serialize())
                                 print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
                             elif client_request.request == Request.CONFIRM_LOGOUT:
-                                # Could implement some logout processing
-                                break
+                                client_request.update(status=Status.SUCCESS)
+                                keys["client"].data.outbound.put(client_request.serialize())
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
                             elif client_request.request == Request.GET_USERS:
                                 request = client_request
                                 request.update(user=username)
                                 keys["database"].data.outbound.put(request.serialize())
+                            elif client_request.request == Request.DELETE_USER:
+                                request = DataObject(request=Request.DELETE_USER, user=username)
+                                keys["database"].data.outbound.put(request.serialize())
+                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
+                            elif client_request.request == Request.GET_MESSAGE:
+                                keys["database"].data.outbound.put(client_request.serialize())
+                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
                             elif client_request.request in [Request.CHECK_USERNAME, Request.CHECK_PASSWORD, Request.CONFIRM_LOGIN]:
                                 raise Exception("Unexpected Communication Flag")
                             else:
@@ -234,11 +243,17 @@ def user_process(client_connection, address, database, user_start, username) :
                             if database_response.request == Request.GET_USERS:
                                 keys["client"].data.outbound.put(database_response.serialize())
                                 print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
+                            if database_response.request == Request.GET_MESSAGE:
+                                keys["client"].data.outbound.put(database_response.serialize())
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
+                            if database_response.request == Request.DELETE_USER:
+                                keys["client"].data.outbound.put(database_response.serialize())
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
+                                break
 
                     if mask & selectors.EVENT_WRITE and not key.data.outbound.empty():
                         message = key.data.outbound.get()
                         key.fileobj.sendall(message)
-                        print(f"Sent from User process to database: {message}")
     except Exception as e:
         print(f"Error in User process {os.getpid()}:", e)
     finally:
@@ -268,6 +283,7 @@ def login_process(client_connection, address, database):
                 raise Exception("Connection closed by the server.")
             client_buffer += data
             serial, client_buffer = DataObject.get_one(client_buffer)
+            print(serial, client_buffer)
             if serial != b"":
                 user_request = DataObject(method="serial", serial=serial)
                 print(f"Login process {os.getpid()} got data {user_request.to_string()}")

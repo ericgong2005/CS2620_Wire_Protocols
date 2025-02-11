@@ -4,7 +4,7 @@ import json
 
 from Modules.Flags import Request, Status, EncodeType
 
-ENCODE_TYPE = EncodeType.JSON
+ENCODE_TYPE = EncodeType.CUSTOM
 CURRENT_VERSION = "1.0"
 
 def byte_encode(input : bytes) -> bytes:
@@ -223,7 +223,7 @@ class DataObject:
                 raise Exception("Invalid Initial Byte")
             split_point = input.find(b"\n\n")
             if split_point == -1:
-                if input[-1] == b"\n":
+                if input[-1] == ord(b"\n"):
                     return (input, b"")
                 else:
                     return (b"", input)
@@ -256,8 +256,9 @@ class DataObject:
 
 class MessageObject:
     def __init__(self, 
-                 method : Literal["args", "serial"] = "args", 
+                 method : Literal["args", "serial", "tuple"] = "args", 
                  serial : bytes = b"", 
+                 tuple : tuple[int, str, str, str, int, str, str] = None,
                  id : int = 0,
                  sender : str = "",
                  recipient : str = "",
@@ -267,7 +268,16 @@ class MessageObject:
                  body : str = ""):
         self.encode_type = ENCODE_TYPE
         self.version = CURRENT_VERSION
-        if method == "serial":   
+        if method == "tuple" and tuple != None:
+            self.id = int(tuple[0])
+            self.sender = tuple[1]
+            self.recipient = tuple[2]
+            self.time_sent = tuple[3]
+            self.read = bool(tuple[4])
+            self.subject = tuple[5]
+            self.body = tuple[6]
+            self.typecheck()
+        elif method == "serial" and serial != None:   
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
@@ -307,8 +317,9 @@ class MessageObject:
 
     
     def update(self, 
-                 method : Literal["args", "serial"] = "args", 
+                 method : Literal["args", "serial", "tuple"] = "args", 
                  serial : bytes = b"", 
+                 tuple : tuple[int, str, str, str, int, str, str] = None,
                  id : int = None,
                  sender : str = None,
                  recipient : str = None,
@@ -316,17 +327,26 @@ class MessageObject:
                  read : bool = None,
                  subject : str = None,
                  body : str = None):
+        if method == "tuple" and tuple != None:
+            self.id = int(tuple[0])
+            self.sender = tuple[1]
+            self.recipient = tuple[2]
+            self.time_sent = tuple[3]
+            self.read = bool(tuple[4])
+            self.subject = tuple[5]
+            self.body = tuple[6]
+            self.typecheck()
         if method == "serial":
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
             self.id = id if id != None else self.id
             self.sender = sender if sender != None else self.sender
-            self.recipient = recipient if recipient != None else recipient
+            self.recipient = recipient if recipient != None else self.recipient
             self.time_sent = time_sent if time_sent != None else self.time_sent
             self.read = read if read != None else self.read
             self.subject = subject if subject != None else self.subject
-            self.body  = body if body != None else self.body
+            self.body = body if body != None else self.body
             self.typecheck()
         else:
             raise Exception("Invalid DataObject Update Method")
@@ -417,6 +437,9 @@ class MessageObject:
             self.body = data["body"]
 
         self.typecheck()
+    
+    def to_sql_tuple(self) -> tuple[str, str, str, int, str, str]:
+        return (self.sender, self.recipient, self.time_sent, int(self.read), self.subject, self.body)
     
     def to_string(self):
         return (f"\nMessageObject uses {self.encode_type}, and contains:\n" +

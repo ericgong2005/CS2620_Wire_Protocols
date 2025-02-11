@@ -5,10 +5,14 @@ import sys
 from pathlib import Path
 
 from Modules.Flags import Request, Status
-from Modules.DataObjects import DataObject
+from Modules.DataObjects import DataObject, MessageObject
 
 PASSWORD_DATABASE = Path(__file__).parent.parent / "User_Data/passwords.db"
+MESSAGES_DATABASE = Path(__file__).parent.parent / "User_Data/messages.db"
 PASSWORD_DATABASE_SCHEMA = "Passwords(Username TEXT PRIMARY KEY, Password TEXT NOT NULL)"
+MESSAGES_DATABASE_SCHEMA = ("Messages(Id INTEGER PRIMARY KEY AUTOINCREMENT, Sender TEXT NOT NULL, " +
+                            "Recipient TEXT NOT NULL, Time_sent TEXT NOT NULL, Read BOOLEAN NOT NULL DEFAULT 0, " + 
+                            "Subject TEXT, Body TEXT)")
 
 class DatabaseManager:
     def __init__(self):
@@ -17,15 +21,20 @@ class DatabaseManager:
         self.passwords_cursor.execute(f"CREATE TABLE IF NOT EXISTS {PASSWORD_DATABASE_SCHEMA}")
         self.passwords.commit()
 
+        self.messages = sqlite3.connect(MESSAGES_DATABASE)
+        self.messages_cursor = self.messages.cursor()
+        self.messages_cursor.execute(f"CREATE TABLE IF NOT EXISTS {MESSAGES_DATABASE_SCHEMA}")
+        self.messages.commit()
+
         # Handle kills and interupts by closing
         atexit.register(self.close)
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
     def close(self):
-        if hasattr(self, 'passwords') and self.passwords:
-            self.passwords.close()
-
+        self.passwords.close()
+        self.messages.close()
+            
     def __enter__(self):
         return self
     
@@ -49,9 +58,12 @@ class DatabaseManager:
     def delete_user(self, username: str) -> Status:
         if not username:
             return Status.ERROR
+        self.messages_cursor.execute("UPDATE Messages SET Recipient = Sender, Subject = 'NOT SENT ' || Subject WHERE Recipient = ? AND Read = 0;", (username,))
+        self.messages_cursor.execute("DELETE FROM Messages WHERE Recipient = ?", (username,))
+        self.messages.commit()
         self.passwords_cursor.execute("DELETE FROM Passwords WHERE Username = ?", (username,))
         if self.passwords_cursor.rowcount == 0:
-            return Status.NOT_FOUND
+            return Status.ERROR
         self.passwords.commit()
         return Status.SUCCESS
     
@@ -59,7 +71,6 @@ class DatabaseManager:
         if not username:
             return (Status.ERROR, None)
         self.passwords_cursor.execute("SELECT Password FROM Passwords WHERE Username = ?", (username,))
-        # POTENTIAL SQL INJECTION OPPORTUNITY? MIGHT NEED TO WRITE A SANATIZER...
         result = self.passwords_cursor.fetchone()
         return (Status.MATCH, result[0]) if result else (Status.NO_MATCH, None)
     
@@ -69,6 +80,7 @@ class DatabaseManager:
             result = self.passwords_cursor.fetchall()
         elif command == "Like":
             self.passwords_cursor.execute("SELECT Username FROM Passwords WHERE Username Like ?", (search, ))
+            # POTENTIAL SQL INJECTION OPPORTUNITY? MIGHT NEED TO WRITE A SANITIZER...
             result = self.passwords_cursor.fetchall()
         else:
             return (Status.ERROR, None)
@@ -76,6 +88,34 @@ class DatabaseManager:
         print(final_result)
         return (Status.SUCCESS, final_result)
     
+    def insert_message(self, message : MessageObject) -> tuple[Status, int]:
+        try:
+            self.messages_cursor.execute(
+                "INSERT INTO Messages (Sender, Recipient, Time_sent, Read, Subject, Body) VALUES (?, ?, ?, ?, ?, ?)",
+                (message.sender, message.recipient, message.time_sent, int(message.read), message.subject, message.body)
+            )
+            id = self.messages_cursor.lastrowid
+            self.messages.commit()
+            return (Status.SUCCESS, id)
+        except sqlite3.IntegrityError:
+            return (Status.ERROR, 0)
+    
+    def delete_message(self, id : int) -> Status:
+        self.messages_cursor.execute("DELETE FROM Messages WHERE Id = ?", (id,))
+        if self.messages_cursor.rowcount == 0:
+            return Status.NO_MATCH
+        self.messages.commit()
+        return Status.SUCCESS
+    
+    def get_message(self, username : str, offset : int, limit : int) -> tuple[Status, list[MessageObject]]:
+        self.messages_cursor.execute(
+            "SELECT * FROM Messages WHERE Recipient = ? ORDER BY Time_sent DESC LIMIT ? OFFSET ?;",
+            (username, limit, offset)
+        )
+        result = self.messages_cursor.fetchall()
+        return (Status.SUCCESS, result)
+
+
     def handler(self, request : DataObject) -> tuple[Status, str]:
         print(f"Handler Recieved {request.to_string()}")
         match request.request:
@@ -100,6 +140,9 @@ class DatabaseManager:
                     return request
                 status = self.insert_user(request.data[0], request.data[1])
                 request.update(status=status, datalen=0, data=[])
+            case Request.DELETE_USER:
+                status = self.delete_user(request.user)
+                request.update(status=status)
             case Request.GET_USERS:
                 command = request.data[0]
                 usernames = []
@@ -111,23 +154,50 @@ class DatabaseManager:
                     request.update(status=status, datalen=len(usernames), data=usernames)
                 else:
                     request.update(status=Status.ERROR, datalen=0, data=[])
+            case Request.SEND_MESSAGE:
+                message = MessageObject(method="serial", serial = request.data[0].encode("utf-8"))
+                recipient = message.recipient
+                status, _password = self.get_password(recipient)
+                if status == Status.NO_MATCH:
+                    request.update(status=Status.NO_MATCH)
+                else:
+                    status, id = self.insert_message(message)
+                    message.update(id=id)
+                    request.update(status=status, data=[message.serialize().decode("utf-8")])
+                    print(request.to_string())
+            case Request.DELETE_MESSAGE:
+                message = MessageObject(method="serial", serial = request.data[0].encode("utf-8"))
+                status = self.delete_message(message)
+                request.update(status=status)
+            case Request.GET_MESSAGE:
+                message_list = []
+                status, raw_list = self.get_message(request.user, int(request.data[0]), int(request.data[1]))
+                print(raw_list)
+                for item in raw_list:
+                    message_list.append(MessageObject(method='tuple', tuple=item).serialize().decode("utf-8"))
+                request.update(status=Status.SUCCESS, datalen = len(message_list), data=message_list)
             case _:
                 request.update(status=Status.ERROR, datalen=0, data=[])
+        print(self.output())
         return request
     
     def empty_table(self) -> Status:
         try:
             self.passwords_cursor.execute("DELETE FROM Passwords")
             self.passwords.commit()
+            self.messages_cursor.execute("DELETE FROM Passwords")
+            self.messages.commit()
             return Status.SUCCESS
         except sqlite3.Error:
             return Status.ERROR
     
-    def output(self) -> list[list[str]] | Status:
+    def output(self) -> list[list[any]]:
         try:
             self.passwords_cursor.execute("SELECT * FROM Passwords")
+            self.messages_cursor.execute("SELECT * FROM Messages")
         except sqlite3.OperationalError:
             return Status.ERROR
-        rows = self.passwords_cursor.fetchall()
-        return rows if rows else Status.NO_MATCH
+        rows_passwords = self.passwords_cursor.fetchall()
+        rows_messages = self.messages_cursor.fetchall()
+        return [rows_passwords, rows_messages]
 

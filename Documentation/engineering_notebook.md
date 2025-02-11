@@ -70,6 +70,7 @@ The following commands should be supported
     - return flag, (success, Error)
 
 We need a data object with the following feilds:
+- Version Number: wire protocol version for future backwards compatability
 - Request Flag: matching with the possible operations, plus an Empty flag
 - Status Flag: In_Action (for inputs), Success, Match, No_Match, Error
 - User: username for issuer or target
@@ -86,8 +87,8 @@ We need a Message object with the following feilds:
 - message
 
 Serializer:
-- For the custom serializer, we can denote breaks with "\", and encode in-text "\" as "%1", and in-text "%" as "%0"
-- we first serialize fields individually, joining them with "\" then serialize again, appending "\" to the start and end so that the start and end of a single transmission is clear.
+- For the custom serializer, we can denote breaks with "\\", and encode in-text "\\" as "%1", and in-text "%" as "%0"
+- we first serialize fields individually, joining them with "\\" then serialize again, appending "\\" to the start and end so that the start and end of a single transmission is clear.
 
 
 

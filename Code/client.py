@@ -33,6 +33,9 @@ class LoginClient:
         if not username:
             messagebox.showwarning("Input Error", "Username cannot be empty!")
             return
+        if " " in username:
+            messagebox.showwarning("Input Error", "Username cannot contain spaces.")
+            return
 
         message = ("username " + username).encode("utf-8")
         self.server_socket.sendall(message)
@@ -77,7 +80,7 @@ class LoginClient:
         if response == "Logged In":
             messagebox.showinfo("Success", "Login Successful!")
             self.window.destroy()
-            ChatClient(self.server_socket)
+            UserClient(self.server_socket)
         elif response == "Wrong Password":
             messagebox.showerror("Login Failed", "Wrong password!")
         else:
@@ -125,8 +128,14 @@ class RegisterClient:
         if not username:
             messagebox.showwarning("Input Error", "Username cannot be empty!")
             return
+        if " " in username:
+            messagebox.showwarning("Input Error", "Username cannot contain spaces.")
+            return
         if not password or not confirm_password:
             messagebox.showwarning("Input Error", "Password cannot be empty!")
+            return
+        if " " in password:
+            messagebox.showwarning("Input Error", "Username cannot contain spaces.")
             return
         if password != confirm_password:
             messagebox.showwarning("Input Error", "Passwords must match!")
@@ -159,7 +168,7 @@ class RegisterClient:
         self.window.destroy()
 
 
-class ChatClient:
+class UserClient:
     def __init__(self, server_socket):
         self.window = tk.Tk()
         self.server_socket = server_socket

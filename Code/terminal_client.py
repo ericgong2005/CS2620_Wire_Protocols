@@ -49,6 +49,10 @@ def client_user(server_socket, username):
         request = DataObject(user=username)
         if lines[0] == "get":
             request.update(request=Request.GET_ONLINE_USERS)
+        elif lines[0] == "users":
+            request.update(request=Request.GET_USERS, datalen=1, data = ["All"])
+        elif lines[0] == "like":
+            request.update(request=Request.GET_USERS, datalen=2, data = ["Like", lines[1]])
         elif lines[0] == "message":
             recipient = input("Send Message To: ")
             subject = input("Enter Message Subject: ")

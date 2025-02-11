@@ -198,8 +198,12 @@ def user_process(client_connection, address, database, user_start, username) :
                             elif client_request.request == Request.CONFIRM_LOGOUT:
                                 # Could implement some logout processing
                                 break
-                            # elif client_request.request in [Request.CHECK_USERNAME, Request.CHECK_PASSWORD, Request.CONFIRM_LOGIN]:
-                            #     raise Exception("Unexpected Communication Flag")
+                            elif client_request.request == Request.GET_USERS:
+                                request = client_request
+                                request.update(user=username)
+                                keys["database"].data.outbound.put(request.serialize())
+                            elif client_request.request in [Request.CHECK_USERNAME, Request.CHECK_PASSWORD, Request.CONFIRM_LOGIN]:
+                                raise Exception("Unexpected Communication Flag")
                             else:
                                 client_request.update(status=Status.SUCCESS)
                                 keys["client"].data.outbound.put(client_request.serialize())
@@ -225,6 +229,9 @@ def user_process(client_connection, address, database, user_start, username) :
                                 keys["client"].data.outbound.put(database_response.serialize())
                                 print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
                             if database_response.request == Request.ALERT_MESSAGE:
+                                keys["client"].data.outbound.put(database_response.serialize())
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
+                            if database_response.request == Request.GET_USERS:
                                 keys["client"].data.outbound.put(database_response.serialize())
                                 print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
 
@@ -314,7 +321,7 @@ def login_process(client_connection, address, database):
                     else:
                         request = user_request
                         database_socket.sendall(request.serialize())
-                        
+
                         request = user_request
                         database_responded = False
                         database_buffer = b""

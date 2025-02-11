@@ -103,12 +103,12 @@ class DataObject:
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
-            self.request = request if request else self.request
-            self.status = status if status else self.status
-            self.sequence = sequence if sequence else self.sequence
-            self.user = user if user else self.user
-            self.datalen = datalen if datalen else self.datalen
-            self.data = data if data else self.data
+            self.request = request if request != None else self.request
+            self.status = status if status != None else self.status
+            self.sequence = sequence if sequence != None else self.sequence
+            self.user = user if user != None else self.user
+            self.datalen = datalen if datalen != None else self.datalen
+            self.data = data if data != None else self.data
             self.typecheck()
         else:
             raise Exception("Invalid DataObject Update Method")
@@ -320,13 +320,13 @@ class MessageObject:
             self.deserialize(serial)
             self.typecheck()
         elif method == "args":
-            self.id = id if id else self.id
-            self.sender = sender if sender else self.sender
-            self.recipient = recipient if recipient else recipient
-            self.time_sent = time_sent if time_sent else self.time_sent
-            self.read = read if read else self.read
-            self.subject = subject if subject else self.subject
-            self.body  = body if body else self.body
+            self.id = id if id != None else self.id
+            self.sender = sender if sender != None else self.sender
+            self.recipient = recipient if recipient != None else recipient
+            self.time_sent = time_sent if time_sent != None else self.time_sent
+            self.read = read if read != None else self.read
+            self.subject = subject if subject != None else self.subject
+            self.body  = body if body != None else self.body
             self.typecheck()
         else:
             raise Exception("Invalid DataObject Update Method")

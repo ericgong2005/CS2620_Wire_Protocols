@@ -59,8 +59,22 @@ class DatabaseManager:
         if not username:
             return (Status.ERROR, None)
         self.passwords_cursor.execute("SELECT Password FROM Passwords WHERE Username = ?", (username,))
+        # POTENTIAL SQL INJECTION OPPORTUNITY? MIGHT NEED TO WRITE A SANATIZER...
         result = self.passwords_cursor.fetchone()
         return (Status.MATCH, result[0]) if result else (Status.NO_MATCH, None)
+    
+    def get_users(self, command : str, search : str = None) -> tuple[Status, list[str]]:
+        if command == "All":
+            self.passwords_cursor.execute("SELECT Username FROM Passwords")
+            result = self.passwords_cursor.fetchall()
+        elif command == "Like":
+            self.passwords_cursor.execute("SELECT Username FROM Passwords WHERE Username Like ?", (search, ))
+            result = self.passwords_cursor.fetchall()
+        else:
+            return (Status.ERROR, None)
+        final_result = [username[0] for username in result]
+        print(final_result)
+        return (Status.SUCCESS, final_result)
     
     def handler(self, request : DataObject) -> tuple[Status, str]:
         print(f"Handler Recieved {request.to_string()}")
@@ -68,7 +82,6 @@ class DatabaseManager:
             case Request.CHECK_USERNAME:
                 status, true_password = self.get_password(request.data[0])
                 request.update(status=status)
-                return request
             case Request.CHECK_PASSWORD:
                 username, password = request.data[0], request.data[1]
                 status, true_password = self.get_password(username)
@@ -79,7 +92,6 @@ class DatabaseManager:
                         request.update(status=Status.NO_MATCH, datalen=1, data=[username])
                 else:
                     request.update(status=Status.ERROR, datalen=0, data=[])
-                return request
             case Request.CREATE_USER:
                 username, password = request.data[0], request.data[1]
                 status, _password = self.get_password(username)
@@ -88,9 +100,20 @@ class DatabaseManager:
                     return request
                 status = self.insert_user(request.data[0], request.data[1])
                 request.update(status=status, datalen=0, data=[])
-                return request
+            case Request.GET_USERS:
+                command = request.data[0]
+                usernames = []
+                if command == "All":
+                    status, usernames = self.get_users("All")
+                    request.update(status=status, datalen=len(usernames), data=usernames)
+                elif command == "Like":
+                    status, usernames = self.get_users("Like", request.data[1])
+                    request.update(status=status, datalen=len(usernames), data=usernames)
+                else:
+                    request.update(status=Status.ERROR, datalen=0, data=[])
             case _:
                 request.update(status=Status.ERROR, datalen=0, data=[])
+        return request
     
     def empty_table(self) -> Status:
         try:

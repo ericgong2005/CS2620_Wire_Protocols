@@ -46,6 +46,8 @@ The Database handler(self, request : DataObject) -> DataObject should accept Dat
 - GET_USERS: DataObjects.data contains some sort of matching pattern, ie (*, Like, In)
     - Feel free to specify the semantics however you want
     - return (Success, Error), number of users, list of users
+    - To get all, send all, one item
+    - To get match by wildcard, send Like and the wildstring
 - Send Message: flag, message(sender, recipient, time, subject, text) 
     - return flag, (Success, Error), id
     - database should assign unique id to each message

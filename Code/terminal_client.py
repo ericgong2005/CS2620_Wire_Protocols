@@ -33,53 +33,51 @@ class LoginClient:
         if not username:
             messagebox.showwarning("Input Error", "Username cannot be empty!")
             return
+        data_buffer += data
+        serial, data_buffer = DataObject.get_one(data_buffer)
+        if serial != b"":
+            recieved = True
+            response = DataObject(method="serial", serial=serial)
+            print(f"{response.to_string()}")
+            if response.request != Request.CONFIRM_LOGIN:
+                print("Unexpected Communication, Login Failed")
+                return
+            if response.status == Status.SUCCESS:
+                print("Logged In")
+            elif response.status == Status.MATCH:
+                print("Already Logged In Elsewhere")
+                return
+            else:
+                print("Login Failed")
+                return
+    
+    # Use selectors to allow for polling instead of blocking
+    client_selector = selectors.DefaultSelector()
+    client_selector.register(server_socket, selectors.EVENT_READ, data=SelectorData("User"))
+    server_socket.setblocking(False)
 
-        message = ("username " + username).encode("utf-8")
-        self.server_socket.sendall(message)
-        response = self.server_socket.recv(1024)
-        if not response:
-            messagebox.showerror("Server Error", "Connection closed by server. Please restart the app.")
-            self.window.destroy()
-            return
-        response = response.decode("utf-8")
-        print(f"Received {response}")
-
-        if response == "Enter Password":
-            self.username_entry.config(state=tk.DISABLED)
-            self.username_button.config(state=tk.DISABLED)
-            self.password_label.pack()
-            self.password_entry.pack()
-            self.password_button.pack()
-        elif response == "No User":
-            messagebox.showerror("Login Failed", "No such username exists! Please register for an account.")
-            self.window.destroy()
-            RegisterClient(server_socket)
-        else:
-            messagebox.showerror("Error", "Unexpected server response.")
-
-    def send_password(self):
-        """Send password to server"""
-        password = self.password_entry.get()
-        if not password:
-            messagebox.showwarning("Input Error", "Password cannot be empty!")
-            return
-
-        message = ("password " + password).encode("utf-8")
-        self.server_socket.sendall(message)
-        response = self.server_socket.recv(1024)
-        if not response:
-            messagebox.showerror("Server Error", "Connection closed by server. Please restart the app.")
-            self.window.destroy()
-            return
-        response = response.decode("utf-8")
-        print(f"Received {response}")
-
-        if response == "Logged In":
-            messagebox.showinfo("Success", "Login Successful!")
-            self.window.destroy()
-            ChatClient(self.server_socket)
-        elif response == "Wrong Password":
-            messagebox.showerror("Login Failed", "Wrong password!")
+    while True:
+        # Send user input to database
+        command = input(f"Enter a message as User {username}: ")
+        if command == "exit":
+            break
+        lines = command.split()
+        request = DataObject(user=username)
+        if lines[0] == "get":
+            request.update(request=Request.GET_ONLINE_USERS)
+        elif lines[0] == "users":
+            request.update(request=Request.GET_USERS, datalen=1, data = ["All"])
+        elif lines[0] == "like":
+            request.update(request=Request.GET_USERS, datalen=2, data = ["Like", lines[1]])
+        elif lines[0] == "message":
+            recipient = input("Send Message To: ")
+            subject = input("Enter Message Subject: ")
+            body = input("Enter Message Body: ")
+            current_time = datetime.now(timezone.utc)
+            iso_time = current_time.isoformat(timespec='seconds')
+            message = MessageObject(sender=username, recipient=recipient, time=iso_time, subject=subject, body=body)
+            message_string = message.serialize().decode("utf-8")
+            request.update(request=Request.SEND_MESSAGE, datalen=1, data=[message_string])
         else:
             messagebox.showerror("Error", "Unexpected server response.")
 

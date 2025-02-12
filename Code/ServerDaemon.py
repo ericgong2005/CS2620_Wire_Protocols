@@ -186,7 +186,8 @@ def user_process(client_connection, address, database, user_start, username) :
                             client_request = DataObject(method="serial", serial=serial)
                             # Standard Commands can be passed directly to the database process
                             if client_request.request in [Request.GET_ONLINE_USERS, Request.SEND_MESSAGE, Request.GET_USERS, 
-                                                          Request.DELETE_USER, Request.GET_MESSAGE, Request.CONFIRM_READ]:
+                                                          Request.DELETE_USER, Request.GET_MESSAGE, Request.DELETE_MESSAGE, 
+                                                          Request.CONFIRM_READ]:
                                 keys["database"].data.outbound.put(client_request.serialize())
                                 print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {client_request.to_string()}")
                             elif client_request.request == Request.CONFIRM_LOGOUT:
@@ -215,7 +216,8 @@ def user_process(client_connection, address, database, user_start, username) :
                             database_response = DataObject(method="serial", serial=serial)
                             print(f"User Process {os.getpid()} recieved {database_response.to_string()}")
                             if database_response.request in [Request.GET_ONLINE_USERS, Request.SEND_MESSAGE, Request.ALERT_MESSAGE, 
-                                                             Request.GET_USERS, Request.GET_MESSAGE, Request.CONFIRM_READ]:
+                                                             Request.GET_USERS, Request.GET_MESSAGE, Request.DELETE_MESSAGE,
+                                                             Request.CONFIRM_READ]:
                                 keys["client"].data.outbound.put(database_response.serialize())
                                 print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}: {database_response.to_string()}")
                             elif database_response.request == Request.DELETE_USER:

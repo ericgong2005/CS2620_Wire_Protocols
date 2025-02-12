@@ -185,8 +185,7 @@ class DatabaseManager:
                         request.update(status=status, data=[message.serialize().decode("utf-8")])
                         print(request.to_string())
                 case Request.DELETE_MESSAGE:
-                    message = MessageObject(method="serial", serial = request.data[0].encode("utf-8"))
-                    status = self.delete_message(message)
+                    status = self.delete_message(int(request.data[0]))
                     request.update(status=status)
                 case Request.GET_MESSAGE:
                     message_list = []

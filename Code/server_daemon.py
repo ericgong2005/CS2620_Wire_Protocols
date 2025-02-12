@@ -24,7 +24,7 @@ def database_request_handler(db : DatabaseManager,
         else:
             online_username[request.user] = key
             online_address[address_string] = request.user
-            request.update(status=Status.SUCCESS)
+            request = db.handler(request)
     elif request.request == Request.GET_ONLINE_USERS:
         user_list = list(online_username.keys())
         request.update(status=Status.SUCCESS, datalen=len(user_list), data=user_list)

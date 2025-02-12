@@ -51,6 +51,7 @@ def client_user(server_socket, username):
             request.update(request=Request.GET_ONLINE_USERS)
         if lines[0] == "msg":
             request.update(request=Request.GET_MESSAGE, datalen=3, data=[lines[1], lines[2], lines[3]])
+            # start index, # messages, read/unread
         elif lines[0] == "users":
             request.update(request=Request.GET_USERS, datalen=1, data = ["All"])
         elif lines[0] == "like":

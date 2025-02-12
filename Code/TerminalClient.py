@@ -109,84 +109,78 @@ def client_create_user(server_socket):
             request = DataObject(request=Request.CREATE_USER, datalen=2, data=[username, password])
             server_socket.sendall(request.serialize())
         else:
-            continue
+           messagebox.showerror("Error", "Unexpected server response.") 
 
-        recieved = False
-        data_buffer = b""
-        while not recieved:
-            data = server_socket.recv(1024)
-            if not data:
-                print("Connection closed by the server.")
-                return
-            data_buffer += data
-            serial, data_buffer = DataObject.get_one(data_buffer)
-            if serial != b"":
-                recieved = True
-                response = DataObject(method="serial", serial=serial)
-                if response.status == Status.SUCCESS:
-                    print(f"Created User with Username: {username}, Password: {password}")
-                    return
-                elif response.status == Status.MATCH:
-                    print("User Exists.")
-                    return
-                else:
-                    print("Error")
+    def close_connection(self):
+        self.server_socket.close()
+        self.window.destroy()
 
-def client_login(server_socket):
-    data_buffer = b""
-    username = ""
-    in_login = True
-    while in_login:
-        print("Login:")
-        username = input("Enter Username: ")
-        print(username)
-        request = DataObject(request=Request.CHECK_USERNAME, datalen=1, data=[username])
-        print(f"Sending: {request.to_string()}")
-        server_socket.sendall(request.serialize())
-        recieved = False
-        while not recieved:
-            data = server_socket.recv(1024)
-            if not data:
-                print("Connection closed by the server.")
-                return
-            data_buffer += data
-            serial, data_buffer = DataObject.get_one(data_buffer)
-            if serial != b"":
-                recieved = True
-                response = DataObject(method="serial", serial=serial)
-                # print(f"Recieved {response.to_string()}")
-                if response.status == Status.MATCH:
-                    in_login = False
-                elif response.status == Status.NO_MATCH:
-                    print("No such username exists")
-                    client_create_user(server_socket)
-                else:
-                    print("Error")
+
+class ChatClient:
+    def __init__(self, server_socket):
+        self.window = tk.Tk()
+        self.server_socket = server_socket
+        self.window.title("Chat")
+        self.create_chat_ui()
+        self.window.protocol("WM_DELETE_WINDOW", self.close_connection)
+        self.window.mainloop()
     
-    password = ""
-    while True:
-        password = input("Enter Password: ")
-        request = DataObject(request=Request.CHECK_PASSWORD, datalen = 2, data = [username, password])
-        server_socket.sendall(request.serialize())
-        recieved = False
-        while not recieved:
-            data = server_socket.recv(1024)
-            if not data:
-                print("Connection closed by the server.")
-                return
-            data_buffer += data
-            serial, data_buffer = DataObject.get_one(data_buffer)
-            if serial != b"":
-                recieved = True
-                response = DataObject(method="serial", serial=serial)
-                if response.status == Status.MATCH:
-                    print("Logging In")
-                    client_user(server_socket, username)
-                    return
-                elif response.status == Status.NO_MATCH:
-                    print("Wrong Password")
-                else:
-                    print("Error")
+    def create_chat_ui(self):
+        self.chat_area = scrolledtext.ScrolledText(self.window, wrap=tk.WORD, state=tk.DISABLED, height=15, width=50)
+        self.chat_area.pack(pady=10)
+
+        self.message_entry = tk.Entry(self.window, width=40)
+        self.message_entry.pack(pady=5, side=tk.LEFT)
+        self.send_button = tk.Button(self.window, text="Send", command=self.send_message)
+        self.send_button.pack(pady=5, side=tk.RIGHT)
+        self.check_user_status()
+
+    def check_user_status(self):
+        response = server_socket.recv(1024).decode("utf-8")
+        self.display_message(response)
+        if response == "Logged In":
+            messagebox.showinfo("Success", "Logged In")
+        elif response == "Duplicate":
+            messagebox.showerror("Error", "Already Logged In Elsewhere")
+            self.window.destroy()
+            LoginClient(self.server_socket)
+            return
+        else:
+            messagebox.showerror("Error", "Login Failed")
+            self.window.destroy()
+            LoginClient(self.server_socket)
+            return
+    
+    def send_message(self):
+        message = self.message_entry.get()
+
+        if not message:
+            messagebox.showwarning("Input Error", "Message cannot be empty!")
+            return
+        
+        self.server_socket.sendall(message.encode("utf-8"))
+        self.display_message(f"You: {message}")
+        self.message_entry.delete(0, tk.END)
+
+        response = self.server_socket.recv(1024)
+        if not response:
+            messagebox.showerror("Server Error", "Connection closed by server. Please restart the app.")
+            self.window.destroy()
+            return
+        response = response.decode("utf-8")
+        print(f"Received {response}")
+        self.display_message(f"Server: {response}")
+    
+    def display_message(self, response):
+        self.chat_area.config(state=tk.NORMAL)
+        self.chat_area.insert(tk.END, response + "\n")
+        self.chat_area.config(state=tk.DISABLED)
+        self.chat_area.yview(tk.END)
+
+    def close_connection(self):
+        self.server_socket.close()
+        self.window.destroy()
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
@@ -194,12 +188,7 @@ if __name__ == "__main__":
         exit(1)
     host, port = sys.argv[1], int(sys.argv[2])
 
-    while True:
-        # Connect to the server
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.connect((host, int(port)))
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.connect((host, int(port)))
 
-        # Start the login process
-        client_login(server_socket)
-
-        server_socket.close()
+    LoginClient(server_socket)

@@ -65,10 +65,16 @@ class LoginClient:
         request = DataObject(user=username)
         if lines[0] == "get":
             request.update(request=Request.GET_ONLINE_USERS)
+        if lines[0] == "msg":
+            request.update(request=Request.GET_MESSAGE, datalen=2, data=[lines[1], lines[2]])
         elif lines[0] == "users":
             request.update(request=Request.GET_USERS, datalen=1, data = ["All"])
         elif lines[0] == "like":
             request.update(request=Request.GET_USERS, datalen=2, data = ["Like", lines[1]])
+        elif lines[0] == "delete":
+            request.update(request=Request.DELETE_USER)
+        elif lines[0] == "logout":
+            request.update(request=Request.CONFIRM_LOGOUT)
         elif lines[0] == "message":
             recipient = input("Send Message To: ")
             subject = input("Enter Message Subject: ")
@@ -79,76 +85,40 @@ class LoginClient:
             message_string = message.serialize().decode("utf-8")
             request.update(request=Request.SEND_MESSAGE, datalen=1, data=[message_string])
         else:
-            messagebox.showerror("Error", "Unexpected server response.")
+            request.update(request=Request.ALERT_MESSAGE, datalen=1, data=[command])
+        
+        print(f"Sending {request.to_string()}")
 
-    def close_connection(self):
-        self.server_socket.close()
-        self.window.destroy()
+        server_socket.sendall(request.serialize())
 
+        # Get response(s)
+        events = client_selector.select(timeout=None)
+        for key, mask in events:
+            if mask & selectors.EVENT_READ:
+                data = key.fileobj.recv(1024)
+                if not data:
+                    print("Connection closed by the server.")
+                    return
+                key.data.inbound += data
+                serial, key.data.inbound = DataObject.get_one(key.data.inbound)
+                while serial != b"":
+                    response = DataObject(method="serial", serial=serial)
+                    if response.request in [Request.DELETE_USER, Request.CONFIRM_LOGOUT] :
+                        return
+                    print(response.to_string()) 
+                    serial, key.data.inbound = DataObject.get_one(key.data.inbound)
+                    
 
-class RegisterClient:
-    def __init__(self, server_socket):
-        self.window = tk.Tk()
-        self.server_socket = server_socket
-        self.window.title("Register")
-        self.create_register_ui()
-        self.window.protocol("WM_DELETE_WINDOW", self.close_connection)
-        self.window.mainloop()
-
-    def create_register_ui(self):
-        """Create the register UI"""
-        self.username_label = tk.Label(self.window, text="Username:")
-        self.username_label.pack()
-        self.username_entry = tk.Entry(self.window)
-        self.username_entry.pack()
-
-        self.password_label = tk.Label(self.window, text="Password:")
-        self.password_label.pack()
-        self.password_entry = tk.Entry(self.window, show="*")
-        self.password_entry.pack()
-
-        self.confirm_password_label = tk.Label(self.window, text="Confirm Password")
-        self.confirm_password_label.pack()
-        self.confirm_password_entry = tk.Entry(self.window, show="*")
-        self.confirm_password_entry.pack()
-
-        self.confirm_password_button = tk.Button(self.window, text="Register", command=self.send_new_user)
-        self.confirm_password_button.pack()
-
-    def send_new_user(self):
-        username = self.username_entry.get()
-        password = self.password_entry.get()
-        confirm_password = self.confirm_password_entry.get()
-
-        if not username:
-            messagebox.showwarning("Input Error", "Username cannot be empty!")
-            return
-        if not password or not confirm_password:
-            messagebox.showwarning("Input Error", "Password cannot be empty!")
-            return
-        if password != confirm_password:
-            messagebox.showwarning("Input Error", "Passwords must match!")
-            return
-
-        message = ("add " + username + " " + password).encode("utf-8")
-        self.server_socket.sendall(message)
-        response = self.server_socket.recv(1024)
-        if not response:
-            messagebox.showerror("Server Error", "Connection closed by server. Please restart the app.")
-            self.window.destroy()
-            return
-        response = response.decode("utf-8")
-        print(f"Received {response}")
-
-        if response == "Success":
-            messagebox.showinfo("Success", "Registration Successful!")
-            self.window.destroy()
-            LoginClient(self.server_socket)
-        elif response == "Exists":
-            messagebox.showwarning("Error", "Username already exists.")
-            return
-        elif response == "Fail":
-            messagebox.showerror("Server Error", "Failed to create new user. Please try again.")
+def client_create_user(server_socket):
+    username = ""
+    while True:
+        print("Create New User:")
+        username = input("Enter Username: ")
+        password = input("Enter Password: ")
+        confirm_password = input("Confirm Password: ")
+        if password == confirm_password:
+            request = DataObject(request=Request.CREATE_USER, datalen=2, data=[username, password])
+            server_socket.sendall(request.serialize())
         else:
            messagebox.showerror("Error", "Unexpected server response.") 
 

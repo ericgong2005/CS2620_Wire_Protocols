@@ -2,6 +2,7 @@ import socket
 import sys
 import selectors
 from datetime import datetime, timezone
+import hashlib
 
 from Modules.Flags import Request, Status
 from Modules.DataObjects import DataObject, MessageObject
@@ -108,7 +109,8 @@ def client_create_user(server_socket):
         password = input("Enter Password: ")
         confirm_password = input("Confirm Password: ")
         if password == confirm_password:
-            request = DataObject(request=Request.CREATE_USER, datalen=2, data=[username, password])
+            hashed_password = hashlib.sha256(password.encode()).hexdigest()
+            request = DataObject(request=Request.CREATE_USER, datalen=2, data=[username, hashed_password])
             server_socket.sendall(request.serialize())
         else:
             continue
@@ -168,7 +170,8 @@ def client_login(server_socket):
     password = ""
     while True:
         password = input("Enter Password: ")
-        request = DataObject(request=Request.CHECK_PASSWORD, datalen = 2, data = [username, password])
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        request = DataObject(request=Request.CHECK_PASSWORD, datalen = 2, data = [username, hashed_password])
         server_socket.sendall(request.serialize())
         recieved = False
         while not recieved:

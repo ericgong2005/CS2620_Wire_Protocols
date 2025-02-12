@@ -1,15 +1,14 @@
 import socket
 import sys
-import selectors
 import time
 from datetime import datetime, timezone
 import tkinter as tk
 from tkinter import ttk
-from tkinter import messagebox, scrolledtext
+from tkinter import messagebox
+import hashlib
 
 from Modules.Flags import Request, Status
 from Modules.DataObjects import DataObject, MessageObject
-from Modules.SelectorData import SelectorData
 
 # run python client.py HOSTNAME PORTNAME
 
@@ -88,7 +87,8 @@ class LoginClient:
             messagebox.showwarning("Input Error", "Username cannot be empty!")
             return
         
-        request = DataObject(request=Request.CHECK_PASSWORD, datalen=2, data=[username, password])
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        request = DataObject(request=Request.CHECK_PASSWORD, datalen=2, data=[username, hashed_password])
         self.server_socket.sendall(request.serialize())
         data_buffer = b""
         received = False
@@ -178,8 +178,8 @@ class RegisterClient:
         if password != confirm_password:
             messagebox.showwarning("Input Error", "Passwords must match!")
             return
-
-        request = DataObject(request=Request.CREATE_USER, datalen=2, data=[username, password])
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        request = DataObject(request=Request.CREATE_USER, datalen=2, data=[username, hashed_password])
         self.server_socket.sendall(request.serialize())
 
         data_buffer = b""

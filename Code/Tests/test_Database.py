@@ -76,6 +76,8 @@ def test_database():
     status, values = db.get_message("you", 0, 10, False)
     assert status == Status.SUCCESS and len(values) == 1
 
+    db.empty_table()
+
     db.close()
 
 

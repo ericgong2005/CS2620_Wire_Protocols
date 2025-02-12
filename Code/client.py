@@ -2,7 +2,7 @@ import socket
 import sys
 import selectors
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox, scrolledtext
@@ -217,6 +217,7 @@ class UserClient:
     ACCOUNTS_LIST_LEN = 19
 
     def __init__(self, server_socket, username):
+        self.request_counter = 0
         self.data_buffer = b""
         self.pending_requests = {} # dictionary to track pending request confirmations: key = time (.1ms), value = request
         self.do_wait = False
@@ -229,7 +230,7 @@ class UserClient:
 
         self.username = username
         self.window = tk.Tk()
-        self.window.geometry("1100x500")
+        self.window.geometry("1500x500")
         self.server_socket = server_socket
         self.window.title(f"{username}'s Chat")
         self.check_user_status()
@@ -274,7 +275,7 @@ class UserClient:
         self.read_button.grid(row=0, column=5, padx=2, pady=5, sticky="W")
 
         # Display messages
-        self.chat_area = ttk.Treeview(self.window, columns=("ID", "Time", "Sender", "Subject", "Body"), show="headings", height=20)
+        self.chat_area = ttk.Treeview(self.window, columns=("ID", "Time", "Sender", "Subject", "Body"), show="headings", height=15)
         self.chat_area.heading("Time", text="Time", anchor="w")
         self.chat_area.heading("Sender", text="Sender", anchor="w")
         self.chat_area.heading("Subject", text="Subject", anchor="w")
@@ -294,6 +295,26 @@ class UserClient:
         # Bind click event
         self.chat_area.bind("<Double-1>", self.open_message)
 
+        # Send Message UI
+        send_frame = tk.Frame(self.window)
+        send_frame.grid(row=0, column=7, rowspan=3, padx=20, pady=10, sticky="N")
+
+        tk.Label(send_frame, text="Send a Message").grid(row=0, column=0, columnspan=2, pady=10)
+
+        tk.Label(send_frame, text="To:").grid(row=1, column=0, sticky="E", padx=5)
+        self.recipient_entry = tk.Entry(send_frame, width=30)
+        self.recipient_entry.grid(row=1, column=1, pady=2, sticky="W")
+
+        tk.Label(send_frame, text="Subject:").grid(row=2, column=0, sticky="E", padx=5)
+        self.subject_entry = tk.Entry(send_frame, width=30)
+        self.subject_entry.grid(row=2, column=1, pady=2, sticky="W")
+
+        tk.Label(send_frame, text="Body:").grid(row=3, column=0, sticky="NE", padx=5)
+        self.body_text = tk.Text(send_frame, wrap=tk.WORD, height=15, width=39)
+        self.body_text.grid(row=3, column=1, pady=2, sticky="W")
+
+        self.send_button = tk.Button(send_frame, text="Send", command=self.send_message)
+        self.send_button.grid(row=4, column=1, pady=5, sticky="W")
         self.window.update_idletasks()
 
     def check_user_status(self):
@@ -329,7 +350,8 @@ class UserClient:
         pattern = self.accounts_searchbar.get().strip()
         data = ["All"] if not pattern else ["Like"] + [pattern]
 
-        request_id = round(time.time() * 10000)  # Unique request ID
+        self.request_counter += 1
+        request_id = self.request_counter
         request = DataObject(user=self.username, request=Request.GET_USERS, datalen=len(data), data=data, sequence=request_id)
         print(f"Sending: {request.to_string()}")
         self.server_socket.sendall(request.serialize())
@@ -392,7 +414,8 @@ class UserClient:
             messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.message_count}")
             return
         
-        request_id = round(time.time() * 10000)  # Unique request ID
+        self.request_counter += 1
+        request_id = self.request_counter
         request = DataObject(user=self.username, request=Request.GET_MESSAGE, datalen=2, data=["0", num_to_read], sequence=request_id)
         print(f"Sending: {request.to_string()}")
         self.server_socket.sendall(request.serialize())
@@ -418,7 +441,6 @@ class UserClient:
         if item:
             message_id, time_sent, sender, subject, body = self.chat_area.item(item, "values") 
 
-            self.mark_message_row_read(message_id)
             self.window.update_idletasks()
             
             message_window = tk.Toplevel(self.window)
@@ -442,7 +464,8 @@ class UserClient:
             message_window.transient(self.window)
             message_window.grab_set()
 
-            request_id = round(time.time() * 10000)  # Unique request ID
+            self.request_counter += 1
+            request_id = self.request_counter
             request = DataObject(user=self.username, request=Request.CONFIRM_READ, datalen=1, data=[message_id], sequence=request_id)
             print(f"Sending: {request.to_string()}")
             self.server_socket.sendall(request.serialize())
@@ -453,15 +476,39 @@ class UserClient:
 
             self.window.after(100, self.wait_for_confirmation, request_id)
     
-    def mark_message_row_read(self, message_id):
-        for item in self.chat_area.get_children():
-            values = self.chat_area.item(item, "values")
-            
-            if values and values[0] == message_id:
-                updated_values = (values[1].replace("(*)", ""),) + values[1:]  # Replace time, keep other columns
-                self.chat_area.item(item, values=updated_values)  # Update row
-                break  # Stop after finding the correct message
+    def send_message(self):
+        recipient = self.recipient_entry.get().strip()
+        subject = self.subject_entry.get().strip()
+        body = self.body_text.get("1.0", tk.END).strip()  # Get text from Text widget
+        if not recipient or not subject or not body:
+            messagebox.showwarning("Warning", "All fields are required!")
+            return
         
+        current_time = datetime.now(timezone.utc)
+        iso_time = current_time.isoformat(timespec='seconds')
+        
+        message = MessageObject(sender=self.username, recipient=recipient, time=iso_time, subject=subject, body=body)
+        message_string = message.serialize().decode("utf-8")
+        print(f"Message:{message.to_string()}")
+
+        self.request_counter += 1
+        request_id = self.request_counter
+        request = DataObject(user=self.username, request=Request.SEND_MESSAGE, datalen=1, data=[message_string], sequence=request_id)
+
+        print(f"Sending: {request.to_string()}")
+        self.server_socket.sendall(request.serialize())
+
+        # Store pending confirmation event
+        self.pending_requests[request_id] = request.request
+        self.do_wait = True
+
+        # Clear fields after sending
+        self.recipient_entry.delete(0, tk.END)
+        self.subject_entry.delete(0, tk.END)
+        self.body_text.delete("1.0", tk.END)
+
+        self.window.after(100, self.wait_for_confirmation, request_id)
+
     def wait_for_confirmation(self, request_id):
         if self.do_wait:
             if request_id in self.pending_requests:
@@ -472,7 +519,6 @@ class UserClient:
     def handle_server_response(self, file, event):
         try:
             data = self.server_socket.recv(1024)
-            print(f"DATA: {data}")
             if not data:
                 messagebox.showerror("Server Error", "Connection closed by server.")
                 self.close_connection()
@@ -491,13 +537,20 @@ class UserClient:
                                 self.accounts = [account for account in response.data if account != self.username]
                                 self.display_accounts()
                             else:
-                                messagebox.showerror("Error", "An error has occurred.")
+                                messagebox.showerror("Error", "An error has occurred while finding other users.")
                         elif response.request == Request.GET_MESSAGE:
                             if response.status == Status.SUCCESS:
                                 self.display_messages(response.data)
+                            else:
+                                messagebox.showerror("Error", "An error has occurred while getting your messages.")
                         elif response.request == Request.CONFIRM_READ:
                             if response.status == Status.SUCCESS:
                                 self.query_messages()
+                        elif response.request == Request.SEND_MESSAGE:
+                            if response.status == Status.SUCCESS:
+                                messagebox.showinfo("Sent", "Your message has been sent")
+                            else:
+                                messagebox.showerror("Error", "An error has occurred while sending your message.")
                         del self.pending_requests[response.sequence]
                 else:
                     # handle new incoming messages

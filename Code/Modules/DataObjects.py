@@ -177,18 +177,18 @@ class DataObject:
             input = byte_decode(input)
             lines = input.split(b"\n")
 
-            self.version = (lines[0].decode("utf-8"))
+            self.version = (byte_decode(lines[0]).decode("utf-8"))
             if self.version != CURRENT_VERSION:
                 raise Exception("Invalid Encoding Version")
 
             if len(lines) != 7:
                 raise Exception("Invalid encoding: Incorrect Fields")
 
-            self.request = Request(int(lines[1].decode("utf-8")))
-            self.status = Status(int(lines[2].decode("utf-8")))
-            self.sequence = int(lines[3].decode("utf-8"))
-            self.user = lines[4].decode("utf-8")
-            self.datalen = int(lines[5].decode("utf-8"))
+            self.request = Request(int(byte_decode(lines[1]).decode("utf-8")))
+            self.status = Status(int(byte_decode(lines[2]).decode("utf-8")))
+            self.sequence = int(byte_decode(lines[3]).decode("utf-8"))
+            self.user = byte_decode(lines[4]).decode("utf-8")
+            self.datalen = int(byte_decode(lines[5]).decode("utf-8"))
             self.data = []
 
             if self.datalen == 0:
@@ -418,12 +418,13 @@ class MessageObject:
                 raise Exception("Invalid encoding: Incorrect Fields")
             
             self.id = int(lines[1].decode("utf-8"))
-            self.sender = lines[2].decode("utf-8")
-            self.recipient = lines[3].decode("utf-8")
-            self.time_sent = lines[4].decode("utf-8")
+            self.sender = byte_decode(lines[2]).decode("utf-8")
+            self.recipient = byte_decode(lines[3]).decode("utf-8")
+            self.time_sent = byte_decode(lines[4]).decode("utf-8")
             self.read = False if lines[5].decode("utf-8") == "0" else True
-            self.subject = lines[6].decode("utf-8")
-            self.body  = lines[7].decode("utf-8")
+            self.subject = byte_decode(lines[6]).decode("utf-8")
+            self.body  = byte_decode(lines[7]).decode("utf-8")
+            print(f"Lines is {lines[7]}, decoded is {self.body}")
                     
         elif self.encode_type == EncodeType.JSON:
             data = json.loads(input.decode("utf-8"))

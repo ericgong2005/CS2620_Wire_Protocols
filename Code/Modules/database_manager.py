@@ -107,14 +107,30 @@ class DatabaseManager:
         self.messages.commit()
         return Status.SUCCESS
     
-    def get_message(self, username : str, offset : int, limit : int) -> tuple[Status, list[MessageObject]]:
-        self.messages_cursor.execute(
-            "SELECT * FROM Messages WHERE Recipient = ? ORDER BY Time_sent DESC LIMIT ? OFFSET ?;",
-            (username, limit, offset)
-        )
+    def get_message(self, username : str, offset : int, limit : int, unread_only : bool) -> tuple[Status, list[MessageObject]]:
+        if unread_only:
+            self.messages_cursor.execute(
+                "SELECT * FROM Messages WHERE Recipient = ? AND Read = 0 ORDER BY Time_sent DESC LIMIT ? OFFSET ?;",
+                (username, limit, offset)
+            )
+        else:
+            self.messages_cursor.execute(
+                "SELECT * FROM Messages WHERE Recipient = ? ORDER BY Time_sent DESC LIMIT ? OFFSET ?;",
+                (username, limit, offset)
+            )
         result = self.messages_cursor.fetchall()
         return (Status.SUCCESS, result)
 
+    def confirm_read(self, username : str, ids : list[str]) -> Status:
+        if len(ids) == 0:
+            return Status.ERROR
+        format = ','.join('?' for _ in ids)
+        values = [username]
+        for id in ids:
+            values.append(int(id))
+        self.messages_cursor.execute(f"UPDATE Messages SET Read = 1 WHERE Recipient = ? AND Id IN ({format})", values)
+        self.messages.commit()
+        return Status.SUCCESS
 
     def handler(self, request : DataObject) -> tuple[Status, str]:
         print(f"Handler Recieved {request.to_string()}")
@@ -171,11 +187,17 @@ class DatabaseManager:
                 request.update(status=status)
             case Request.GET_MESSAGE:
                 message_list = []
-                status, raw_list = self.get_message(request.user, int(request.data[0]), int(request.data[1]))
+                if request.datalen == 3 and request.data[2] == "Unread":
+                    status, raw_list = self.get_message(request.user, int(request.data[0]), int(request.data[1]), True)
+                else:
+                    status, raw_list = self.get_message(request.user, int(request.data[0]), int(request.data[1]), False)
                 print(raw_list)
                 for item in raw_list:
                     message_list.append(MessageObject(method='tuple', tuple=item).serialize().decode("utf-8"))
                 request.update(status=Status.SUCCESS, datalen = len(message_list), data=message_list)
+            case Request.CONFIRM_READ:
+                status = self.confirm_read(request.user, request.data)
+                request.update(status=status)
             case _:
                 request.update(status=Status.ERROR, datalen=0, data=[])
         print(self.output())

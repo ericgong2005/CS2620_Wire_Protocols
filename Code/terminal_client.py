@@ -50,7 +50,7 @@ def client_user(server_socket, username):
         if lines[0] == "get":
             request.update(request=Request.GET_ONLINE_USERS)
         if lines[0] == "msg":
-            request.update(request=Request.GET_MESSAGE, datalen=2, data=[lines[1], lines[2]])
+            request.update(request=Request.GET_MESSAGE, datalen=3, data=[lines[1], lines[2], lines[3]])
         elif lines[0] == "users":
             request.update(request=Request.GET_USERS, datalen=1, data = ["All"])
         elif lines[0] == "like":
@@ -59,6 +59,8 @@ def client_user(server_socket, username):
             request.update(request=Request.DELETE_USER)
         elif lines[0] == "logout":
             request.update(request=Request.CONFIRM_LOGOUT)
+        elif lines[0] == "read":
+            request.update(request=Request.CONFIRM_READ, datalen=len(lines[1:]), data=lines[1:])
         elif lines[0] == "message":
             recipient = input("Send Message To: ")
             subject = input("Enter Message Subject: ")
@@ -67,6 +69,7 @@ def client_user(server_socket, username):
             iso_time = current_time.isoformat(timespec='seconds')
             message = MessageObject(sender=username, recipient=recipient, time=iso_time, subject=subject, body=body)
             message_string = message.serialize().decode("utf-8")
+            print(message.to_string())
             request.update(request=Request.SEND_MESSAGE, datalen=1, data=[message_string])
         else:
             request.update(request=Request.ALERT_MESSAGE, datalen=1, data=[command])

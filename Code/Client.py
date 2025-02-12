@@ -180,7 +180,12 @@ class RegisterClient:
             return
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
         request = DataObject(request=Request.CREATE_USER, datalen=2, data=[username, hashed_password])
-        self.server_socket.sendall(request.serialize())
+        try:
+            self.server_socket.sendall(request.serialize())
+        except Exception as e:
+            print(f"Encountered {e}")
+            messagebox.showwarning("Error", "Task Failed")
+            return
 
         data_buffer = b""
         received = False

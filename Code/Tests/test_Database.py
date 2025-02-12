@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 from Modules.DatabaseManager import DatabaseManager
+=======
+from Modules.database_manager import DatabaseManager
+>>>>>>> 49171e7 (Rename Files for consistency, make copy of code for Version3)
 from Modules.Flags import Status
 from Modules.DataObjects import MessageObject
 

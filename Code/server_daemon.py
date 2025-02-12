@@ -211,6 +211,9 @@ def user_process(client_connection, address, database, user_start, username) :
                             elif client_request.request == Request.GET_MESSAGE:
                                 keys["database"].data.outbound.put(client_request.serialize())
                                 print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
+                            elif client_request.request == Request.CONFIRM_READ:
+                                keys["database"].data.outbound.put(client_request.serialize())
+                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
                             elif client_request.request in [Request.CHECK_USERNAME, Request.CHECK_PASSWORD, Request.CONFIRM_LOGIN]:
                                 raise Exception("Unexpected Communication Flag")
                             else:
@@ -244,6 +247,9 @@ def user_process(client_connection, address, database, user_start, username) :
                                 keys["client"].data.outbound.put(database_response.serialize())
                                 print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
                             if database_response.request == Request.GET_MESSAGE:
+                                keys["client"].data.outbound.put(database_response.serialize())
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
+                            if database_response.request == Request.CONFIRM_READ:
                                 keys["client"].data.outbound.put(database_response.serialize())
                                 print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
                             if database_response.request == Request.DELETE_USER:

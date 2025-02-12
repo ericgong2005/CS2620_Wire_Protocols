@@ -367,7 +367,7 @@ class MessageObject:
                 self.sender.encode("utf-8"),
                 self.recipient.encode("utf-8"),
                 self.time_sent.encode("utf-8"),
-                str(self.read).encode("utf-8"),
+                str(1 if self.read else 0).encode("utf-8"),
                 self.subject.encode("utf-8"),
                 self.body.encode("utf-8")
             ]
@@ -419,7 +419,7 @@ class MessageObject:
             self.sender = lines[2].decode("utf-8")
             self.recipient = lines[3].decode("utf-8")
             self.time_sent = lines[4].decode("utf-8")
-            self.read = bool(lines[5].decode("utf-8"))
+            self.read = False if lines[5].decode("utf-8") == "0" else True
             self.subject = lines[6].decode("utf-8")
             self.body  = lines[7].decode("utf-8")
                     

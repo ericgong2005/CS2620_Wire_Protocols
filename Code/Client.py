@@ -314,6 +314,18 @@ class UserClient:
 
         self.send_button = tk.Button(send_frame, text="Send", command=self.send_message)
         self.send_button.grid(row=4, column=1, pady=5, sticky="W")
+
+        # Delete message
+        self.delete_button = tk.Button(self.window, text="Delete Selected Messages", command=self.delete_selected_messages)
+        self.delete_button.grid(row=2, column=3, columnspan=3, pady=5, padx=10, sticky="W")
+
+        # Logout and Delete Account Buttons
+        self.logout_button = tk.Button(self.window, text="Logout", command=self.logout)
+        self.logout_button.grid(row=4, column=0, padx=5, pady=10, sticky="W")
+
+        self.delete_account_button = tk.Button(self.window, text="Delete Account", command=self.delete_account)
+        self.delete_account_button.grid(row=4, column=1, padx=5, pady=10, sticky="W")
+
         self.window.update_idletasks()
 
     def check_user_status(self):
@@ -349,7 +361,7 @@ class UserClient:
         pattern = self.accounts_searchbar.get().strip()
         data = ["All"] if not pattern else ["Like"] + [pattern]
 
-        request_id = round(time.time() * 10000)
+        request_id = round(time.time() * 1000000)
         request = DataObject(user=self.username, request=Request.GET_USERS, datalen=len(data), data=data, sequence=request_id)
         print(f"Sending: {request.to_string()}")
         self.server_socket.sendall(request.serialize())
@@ -410,11 +422,8 @@ class UserClient:
         num_to_read = self.message_count_entry.get().strip()
 
         if incoming_message:
-            if not num_to_read:
+            if not num_to_read or not num_to_read.isdigit() or int(num_to_read) < 1 or int(num_to_read) > self.message_count:
                 num_to_read = str(1)
-            elif not num_to_read.isdigit() or int(num_to_read) < 1 or int(num_to_read) > self.message_count:
-                messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.message_count}")
-                return
             else:
                 num_to_read = str(int(num_to_read) + 1)
             # visually update (increment) numbers with incoming message
@@ -426,7 +435,7 @@ class UserClient:
                 messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.message_count}")
                 return
         
-        request_id = round(time.time() * 10000)
+        request_id = round(time.time() * 1000000)
         request = DataObject(user=self.username, request=Request.GET_MESSAGE, datalen=2, data=["0", num_to_read], sequence=request_id)
         print(f"Sending: {request.to_string()}")
         self.server_socket.sendall(request.serialize())
@@ -475,7 +484,7 @@ class UserClient:
             message_window.transient(self.window)
             message_window.grab_set()
 
-            request_id = round(time.time() * 10000)
+            request_id = round(time.time() * 1000000)
             request = DataObject(user=self.username, request=Request.CONFIRM_READ, datalen=1, data=[message_id], sequence=request_id)
             print(f"Sending: {request.to_string()}")
             self.server_socket.sendall(request.serialize())
@@ -501,7 +510,7 @@ class UserClient:
         message_string = message.serialize().decode("utf-8")
         print(f"Message:{message.to_string()}")
 
-        request_id = round(time.time() * 10000)
+        request_id = round(time.time() * 1000000)
         request = DataObject(user=self.username, request=Request.SEND_MESSAGE, datalen=1, data=[message_string], sequence=request_id)
 
         print(f"Sending: {request.to_string()}")
@@ -515,6 +524,90 @@ class UserClient:
         self.recipient_entry.delete(0, tk.END)
         self.subject_entry.delete(0, tk.END)
         self.body_text.delete("1.0", tk.END)
+
+        self.window.after(100, self.wait_for_confirmation, request_id)
+    
+    def delete_selected_messages(self):
+        selected_items = self.chat_area.selection()
+
+        if not selected_items:
+            messagebox.showwarning("No Selection", "Please select a message to delete.")
+            return
+        
+        num_messages = 0
+        num_unread = 0
+
+        # Collect message IDs
+        message_ids = []
+        for item in selected_items:
+            values = self.chat_area.item(item, "values")
+            message_id = values[0]
+            message_ids.append(message_id)
+            num_messages += 1
+            if "(*)" in values[1]:
+                num_unread += 1
+
+        # Confirm deletion
+        confirm = messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete {len(message_ids)} message(s)?")
+        if not confirm:
+            return
+        
+        # Remove from Treeview (UI)
+        for item in selected_items:
+            self.chat_area.delete(item)
+
+        # Update text
+        self.message_count -= num_messages
+        self.unread_count -= num_unread
+        num_to_read = self.message_count_entry.get().strip()
+
+        if int(num_to_read) <= num_messages:
+            self.message_count_entry.delete(0, tk.END)
+            self.message_count_label.config(text=f"You have {self.message_count} messages ({self.unread_count} unread). How many messages would you like to see?")
+        else:
+            num_to_read = str(int(num_to_read) - num_messages)
+            self.message_count_entry.delete(0, tk.END)
+            self.message_count_entry.insert(0, num_to_read)
+            self.message_count_label.config(text=f"You have {self.message_count} messages ({self.unread_count} unread). How many messages would you like to see?")
+    
+        for message_id in message_ids:
+            request_id = round(time.time() * 1000000)
+            request = DataObject(user=self.username, request=Request.DELETE_MESSAGE, datalen=1, data=[str(message_id)], sequence=request_id)
+
+            print(f"Sending: {request.to_string()}")
+            self.server_socket.sendall(request.serialize())
+
+            # Store pending confirmation event
+            self.pending_requests[request_id] = request.request
+            self.do_wait = True
+            
+            self.window.after(100, self.wait_for_confirmation, request_id)
+
+    def logout(self):
+        request_id = round(time.time() * 1000000)
+        request = DataObject(user=self.username, request=Request.CONFIRM_LOGOUT, sequence=request_id)
+        print(f"Sending: {request.to_string()}")
+        self.server_socket.sendall(request.serialize())
+
+        # Store pending confirmation event
+        self.pending_requests[request_id] = request.request
+        self.do_wait = True
+
+        self.window.after(100, self.wait_for_confirmation, request_id)
+    
+    def delete_account(self):
+        confirm = messagebox.askyesno("Confirm Account Deletion", "Are you sure you want to delete your account? This action is irreversible!")
+        if not confirm:
+            return
+
+        request_id = round(time.time() * 1000000)
+        request = DataObject(user=self.username, request=Request.DELETE_USER, sequence=request_id)
+        print(f"Sending: {request.to_string()}")
+        self.server_socket.sendall(request.serialize())
+
+        # Store pending confirmation event
+        self.pending_requests[request_id] = request.request
+        self.do_wait = True
 
         self.window.after(100, self.wait_for_confirmation, request_id)
 
@@ -560,14 +653,29 @@ class UserClient:
                                 messagebox.showinfo("Sent", "Your message has been sent")
                             else:
                                 messagebox.showerror("Error", "An error has occurred while sending your message.")
+                        elif response.request == Request.DELETE_MESSAGE:
+                            if response.status != Status.SUCCESS:
+                                messagebox.showerror("Error", "An error has occurred while deleting messages.")
+                        elif response.request == Request.CONFIRM_LOGOUT:
+                            if response.status == Status.SUCCESS:
+                                self.close_connection()
+                                new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                                new_socket.connect((sys.argv[1], int(sys.argv[2])))  # Get host/port from sys.argv
+                                LoginClient(new_socket)
+                        elif response.request == Request.DELETE_USER:
+                            if response.status == Status.SUCCESS:
+                                messagebox.showinfo("Account Deleted", "Your account has been deleted.")
+                                self.close_connection()
+                                new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                                new_socket.connect((sys.argv[1], int(sys.argv[2])))  # Get host/port from sys.argv
+                                LoginClient(new_socket)
                         del self.pending_requests[response.sequence]
-                else:
-                    # handle new incoming messages
-                    if response.request == Request.ALERT_MESSAGE:
-                        if response.status == Status.PENDING:
-                            self.message_count += 1
-                            self.unread_count += 1
-                            self.query_messages(incoming_message=True)
+                # handle new incoming messages
+                if response.request == Request.ALERT_MESSAGE:
+                    if response.status == Status.PENDING:
+                        self.message_count += 1
+                        self.unread_count += 1
+                        self.query_messages(incoming_message=True)
 
                 serial, self.data_buffer = DataObject.get_one(self.data_buffer)
 
@@ -577,8 +685,6 @@ class UserClient:
     def close_connection(self):
         self.server_socket.close()
         self.window.destroy()
-
-#^ DELETE MESSAGE: takes in one message id, returns status success
 
 
 if __name__ == "__main__":

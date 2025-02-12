@@ -2,7 +2,9 @@ import socket
 import sys
 import selectors
 import time
+from datetime import datetime
 import tkinter as tk
+from tkinter import ttk
 from tkinter import messagebox, scrolledtext
 
 from Modules.Flags import Request, Status
@@ -215,6 +217,7 @@ class UserClient:
     ACCOUNTS_LIST_LEN = 19
 
     def __init__(self, server_socket, username):
+        self.data_buffer = b""
         self.pending_requests = {} # dictionary to track pending request confirmations: key = time (.1ms), value = request
         self.do_wait = False
 
@@ -261,17 +264,35 @@ class UserClient:
         self.accounts_next_button.grid(row=2, column=2, pady=1, sticky="E")
 
         # Messages column
-        self.unread_count_label = tk.Label(self.window, text=f"You have {self.unread_count} unread messages. How many would you like to read?")
-        self.unread_count_label.grid(row=0, column=3, padx=10, pady=5, sticky="E")
+        self.message_count_label = tk.Label(self.window, text=f"You have {self.message_count} messages ({self.unread_count} unread). How many messages would you like to see?")
+        self.message_count_label.grid(row=0, column=3, padx=2, pady=5, sticky="E")
 
-        self.unread_count_entry = tk.Entry(self.window, width=5)
-        self.unread_count_entry.grid(row=0, column=4, padx=2, pady=5, sticky="W")
+        self.message_count_entry = tk.Entry(self.window, width=5)
+        self.message_count_entry.grid(row=0, column=4, padx=2, pady=5, sticky="W")
 
-        self.read_button = tk.Button(self.window, text="Read Messages")
-        self.read_button.grid(row=0, column=5, padx=5, pady=5, sticky="W")
+        self.read_button = tk.Button(self.window, text="Show Messages", command=self.query_messages)
+        self.read_button.grid(row=0, column=5, padx=2, pady=5, sticky="W")
 
-        self.chat_area = scrolledtext.ScrolledText(self.window, wrap=tk.WORD, state=tk.DISABLED, height=20, width=90)
+        # Display messages
+        self.chat_area = ttk.Treeview(self.window, columns=("ID", "Time", "Sender", "Subject", "Body"), show="headings", height=20)
+        self.chat_area.heading("Time", text="Time", anchor="w")
+        self.chat_area.heading("Sender", text="Sender", anchor="w")
+        self.chat_area.heading("Subject", text="Subject", anchor="w")
+        self.chat_area.column("ID", width=0, stretch=False)
+        self.chat_area.column("Time", width=125, stretch=False)
+        self.chat_area.column("Sender", width=175, anchor="w", stretch=False)
+        self.chat_area.column("Subject", width=350, anchor="w", stretch=False)
+        self.chat_area.column("Body", width=0, stretch=False)
+
+        # Scrollbar for Chat Treeview
+        self.chat_scroll = ttk.Scrollbar(self.window, orient="vertical", command=self.chat_area.yview)
+        self.chat_area.configure(yscroll=self.chat_scroll.set)
+
         self.chat_area.grid(row=1, column=3, columnspan=3, padx=10, pady=5, sticky="W")
+        self.chat_scroll.grid(row=1, column=6, sticky="NS")
+
+        # Bind click event
+        self.chat_area.bind("<Double-1>", self.open_message)
 
         self.window.update_idletasks()
 
@@ -361,49 +382,86 @@ class UserClient:
         else:
             self.accounts_back_button.config(state=tk.NORMAL)
         self.display_accounts()
-            
-    def display_message(self, response):
-        self.chat_area.config(state=tk.NORMAL)
-        self.chat_area.insert(tk.END, response + "\n")
-        self.chat_area.config(state=tk.DISABLED)
-        self.chat_area.yview(tk.END)
 
-    def read_messages(self):
-        num_to_read = self.unread_count_entry.get().strip()
+    def query_messages(self):
+        for item in self.chat_area.get_children():
+            self.chat_area.delete(item)
 
-        if not num_to_read or not num_to_read.isdigit() or int(num_to_read) < 1 or int(num_to_read) > self.unread_count:
-            messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.unread_count}")
+        num_to_read = self.message_count_entry.get().strip()
+        if not num_to_read or not num_to_read.isdigit() or int(num_to_read) < 1 or int(num_to_read) > self.message_count:
+            messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.message_count}")
             return
-
-    # def send_message(self):
-    #     message = self.message_entry.get().strip()
-
-    #     if not message:
-    #         messagebox.showwarning("Input Error", "Message cannot be empty!")
-    #         return
-
-    #     request_id = round(time.time() * 10000)  # Unique request ID
-    #     request = DataObject(user=self.username, sequence=request_id)
-
-    #     if message == "get":
-    #         request.update(request=Request.GET_USERS)
-    #     elif message == "getonline":
-    #         request.update(request=Request.GET_ONLINE_USERS)
-    #     # elif message[:7] == "message":
-    #     #     request.update(request=Request.SEND_MESSAGE)
-    #     else:
-    #         request.update(request=Request.ALERT_MESSAGE, datalen=1, data=[message])
         
-    #     print(f"Sending {request.to_string()}")
-    #     self.server_socket.sendall(request.serialize())
+        request_id = round(time.time() * 10000)  # Unique request ID
+        request = DataObject(user=self.username, request=Request.GET_MESSAGE, datalen=2, data=["0", num_to_read], sequence=request_id)
+        print(f"Sending: {request.to_string()}")
+        self.server_socket.sendall(request.serialize())
 
-    #     # Store pending confirmation event
-    #     self.pending_requests[request_id] = request.request
-    #     self.do_wait = True
+        # Store pending confirmation event
+        self.pending_requests[request_id] = request.request
+        self.do_wait = True
 
-    #     # Check for confirmation every 100ms without freezing the UI
-    #     self.window.after(100, self.wait_for_confirmation, request_id)
+        self.window.after(100, self.wait_for_confirmation, request_id)
+            
+    def display_messages(self, messages):
+        for serial in messages:
+            serial = serial.encode("utf-8")
+            message = MessageObject(method="serial", serial=serial)
+            formatted_datetime = datetime.fromisoformat(message.time_sent).strftime("%-m/%-d/%y %-H:%M")
+            formatted_datetime = f"{formatted_datetime:>15}"  
+            formatted_datetime += " (*)" if not message.read else "    "  # 4 spaces to match (*)
 
+            self.chat_area.insert("", "end", values=(message.id, formatted_datetime, message.sender, message.subject, message.body))
+
+    def open_message(self, event):
+        item = self.chat_area.identify_row(event.y)
+        if item:
+            message_id, time_sent, sender, subject, body = self.chat_area.item(item, "values") 
+
+            self.mark_message_row_read(message_id)
+            self.window.update_idletasks()
+            
+            message_window = tk.Toplevel(self.window)
+            message_window.title(f"Message from {sender}: {subject}")
+            message_window.geometry("600x400")
+
+            message_textbox = tk.Text(message_window, wrap=tk.WORD, height=20, width=70)
+            message_textbox.pack(expand=True, fill="both", padx=10, pady=10)
+
+            message_textbox.config(state=tk.NORMAL)
+            message_textbox.insert(
+                tk.END,
+                f"{'Time:':<8} {time_sent.strip().replace('(*)', '')}\n"
+                f"{'From:':<8} {sender}\n"
+                f"{'To:':<8} {self.username}\n\n"
+                f"Subject: {subject}\n\n"
+                f"Body:\n\n{body}"
+            )
+            message_textbox.config(state=tk.DISABLED)
+
+            message_window.transient(self.window)
+            message_window.grab_set()
+
+            request_id = round(time.time() * 10000)  # Unique request ID
+            request = DataObject(user=self.username, request=Request.CONFIRM_READ, datalen=1, data=[message_id], sequence=request_id)
+            print(f"Sending: {request.to_string()}")
+            self.server_socket.sendall(request.serialize())
+
+            # Store pending confirmation event
+            self.pending_requests[request_id] = request.request
+            self.do_wait = True
+
+            self.window.after(100, self.wait_for_confirmation, request_id)
+    
+    def mark_message_row_read(self, message_id):
+        for item in self.chat_area.get_children():
+            values = self.chat_area.item(item, "values")
+            
+            if values and values[0] == message_id:
+                updated_values = (values[1].replace("(*)", ""),) + values[1:]  # Replace time, keep other columns
+                self.chat_area.item(item, values=updated_values)  # Update row
+                break  # Stop after finding the correct message
+        
     def wait_for_confirmation(self, request_id):
         if self.do_wait:
             if request_id in self.pending_requests:
@@ -413,15 +471,15 @@ class UserClient:
     
     def handle_server_response(self, file, event):
         try:
-            data_buffer = b""
             data = self.server_socket.recv(1024)
+            print(f"DATA: {data}")
             if not data:
                 messagebox.showerror("Server Error", "Connection closed by server.")
                 self.close_connection()
                 return
 
-            data_buffer += data
-            serial, data_buffer = DataObject.get_one(data_buffer)
+            self.data_buffer += data
+            serial, self.data_buffer = DataObject.get_one(self.data_buffer)
             while serial != b"":
                 response = DataObject(method="serial", serial=serial)
                 print(f"Response:{response.to_string()}")
@@ -430,16 +488,24 @@ class UserClient:
                     if response.request == self.pending_requests[response.sequence]:
                         if response.request == Request.GET_USERS:
                             if response.status == Status.SUCCESS:
-                                self.accounts = response.data
+                                self.accounts = [account for account in response.data if account != self.username]
                                 self.display_accounts()
                             else:
                                 messagebox.showerror("Error", "An error has occurred.")
+                        elif response.request == Request.GET_MESSAGE:
+                            if response.status == Status.SUCCESS:
+                                self.display_messages(response.data)
+                        elif response.request == Request.CONFIRM_READ:
+                            if response.status == Status.SUCCESS:
+                                self.query_messages()
                         del self.pending_requests[response.sequence]
                 else:
                     # handle new incoming messages
-                    pass
+                    if response.request == Request.ALERT_MESSAGE:
+                        if response.status == Status.SUCCESS:
+                            pass
 
-                serial, data_buffer = DataObject.get_one(data_buffer)
+                serial, self.data_buffer = DataObject.get_one(self.data_buffer)
 
         except BlockingIOError:
             pass
@@ -447,6 +513,8 @@ class UserClient:
     def close_connection(self):
         self.server_socket.close()
         self.window.destroy()
+
+#^ DELETE MESSAGE: takes in one message id, returns status success
 
 
 if __name__ == "__main__":

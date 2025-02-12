@@ -132,6 +132,15 @@ class DatabaseManager:
         self.messages.commit()
         return Status.SUCCESS
 
+    def get_message_counts(self, username : str) -> tuple[Status, int, int]:
+        self.messages_cursor.execute(
+            "SELECT COUNT(*) FROM Messages WHERE Recipient = ? AND Read = 0;", (username,))
+        unread = self.messages_cursor.fetchone()[0]
+        self.messages_cursor.execute(
+            "SELECT COUNT(*) FROM Messages WHERE Recipient = ?", (username,))
+        total = self.messages_cursor.fetchone()[0]
+        return (Status.SUCCESS, unread, total)
+
     def handler(self, request : DataObject) -> tuple[Status, str]:
         print(f"Handler Recieved {request.to_string()}")
         match request.request:
@@ -198,6 +207,9 @@ class DatabaseManager:
             case Request.CONFIRM_READ:
                 status = self.confirm_read(request.user, request.data)
                 request.update(status=status)
+            case Request.CONFIRM_LOGIN:
+                status, unread, total = self.get_message_counts(request.user)
+                request.update(status=status, datalen=2, data=[str(unread), str(total)])
             case _:
                 request.update(status=Status.ERROR, datalen=0, data=[])
         print(self.output())

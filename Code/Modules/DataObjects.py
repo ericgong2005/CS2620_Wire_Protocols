@@ -3,9 +3,7 @@ import time
 import json
 
 from Modules.Flags import Request, Status, EncodeType
-
-ENCODE_TYPE = EncodeType.CUSTOM
-CURRENT_VERSION = "1.0"
+from Modules.Constants import ENCODE_TYPE, CURRENT_VERSION
 
 def byte_encode(input : bytes) -> bytes:
     '''
@@ -28,8 +26,8 @@ def byte_decode(input : bytes) -> bytes:
     special = False
     decoded = bytearray()
     for byte in input:
-        if byte == ord("%"):
-            special = True
+        if byte == ord("\n"):
+            raise Exception(r"Invalid Encoding: contains \n")
         elif special:
             special = False
             if byte == ord("1"):
@@ -37,9 +35,13 @@ def byte_decode(input : bytes) -> bytes:
             elif byte == ord("0"):
                 decoded.extend(b"%")
             else:
-                raise Exception("Invalid Encoding")
+                raise Exception(r"Invalid Encoding: % not followed by 0 or 1")
+        elif byte == ord("%"):
+            special = True
         else:
             decoded.append(byte)
+    if special:
+        raise Exception(r"Invalid Encoding: % at the end")
     return bytes(decoded)
 
 class DataObject:

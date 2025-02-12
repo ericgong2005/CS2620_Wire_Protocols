@@ -9,8 +9,8 @@ from Modules.DataObjects import DataObject, MessageObject
 
 PASSWORD_DATABASE = Path(__file__).parent.parent / "User_Data/passwords.db"
 MESSAGES_DATABASE = Path(__file__).parent.parent / "User_Data/messages.db"
-PASSWORD_DATABASE_SCHEMA = "Passwords(Username TEXT PRIMARY KEY, Password TEXT NOT NULL)"
-MESSAGES_DATABASE_SCHEMA = ("Messages(Id INTEGER PRIMARY KEY AUTOINCREMENT, Sender TEXT NOT NULL, " +
+PASSWORD_DATABASE_SCHEMA = "Passwords (Username TEXT PRIMARY KEY, Password TEXT NOT NULL)"
+MESSAGES_DATABASE_SCHEMA = ("Messages (Id INTEGER PRIMARY KEY AUTOINCREMENT, Sender TEXT NOT NULL, " +
                             "Recipient TEXT NOT NULL, Time_sent TEXT NOT NULL, Read BOOLEAN NOT NULL DEFAULT 0, " + 
                             "Subject TEXT, Body TEXT)")
 
@@ -219,7 +219,7 @@ class DatabaseManager:
         try:
             self.passwords_cursor.execute("DELETE FROM Passwords")
             self.passwords.commit()
-            self.messages_cursor.execute("DELETE FROM Passwords")
+            self.messages_cursor.execute("DELETE FROM Messages")
             self.messages.commit()
             return Status.SUCCESS
         except sqlite3.Error:

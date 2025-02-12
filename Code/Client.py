@@ -105,7 +105,7 @@ class LoginClient:
                 response = DataObject(method="serial", serial=serial)
                 print(f"Received: {response.to_string()}")
                 if response.status == Status.MATCH:
-                    messagebox.showinfo("Success", "Login Successful!")
+                    messagebox.showinfo("Success", "Currently Logging In")
                     self.window.destroy()
                     UserClient(self.server_socket, username)
                 elif response.status == Status.NO_MATCH:
@@ -427,7 +427,7 @@ class UserClient:
         num_to_read = self.message_count_entry.get().strip()
 
         if incoming_message:
-            if not num_to_read or not num_to_read.isdigit() or int(num_to_read) < 1 or int(num_to_read) > self.message_count:
+            if not num_to_read or not num_to_read.isdigit() or int(num_to_read) < 1:
                 num_to_read = str(1)
             else:
                 num_to_read = str(int(num_to_read) + 1)
@@ -436,8 +436,11 @@ class UserClient:
             self.message_count_entry.insert(0, num_to_read)
             self.message_count_label.config(text=f"You have {self.message_count} messages ({self.unread_count} unread). How many messages would you like to see?")
         else:
-            if not num_to_read or not num_to_read.isdigit() or int(num_to_read) < 1 or int(num_to_read) > self.message_count:
-                messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.message_count}")
+            if self.message_count == 0:
+                messagebox.showwarning("Input Error", f"Sorry! You have no messages to display...")
+                return
+            elif not num_to_read or not num_to_read.isdigit() or int(num_to_read) < 0:
+                messagebox.showwarning("Input Error", f"Must be a number greater than or equal to 0!")
                 return
         
         request_id = round(time.time() * 1000000)
@@ -455,6 +458,7 @@ class UserClient:
         for serial in messages:
             serial = serial.encode("utf-8")
             message = MessageObject(method="serial", serial=serial)
+            print(message.to_string())
             formatted_datetime = datetime.fromisoformat(message.time_sent).strftime("%-m/%-d/%y %-H:%M")
             formatted_datetime = f"{formatted_datetime:>15}"  
             formatted_datetime += " (*)" if not message.read else "    "  # 4 spaces to match (*)

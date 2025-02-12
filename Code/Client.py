@@ -217,7 +217,6 @@ class UserClient:
     ACCOUNTS_LIST_LEN = 19
 
     def __init__(self, server_socket, username):
-        self.request_counter = 0
         self.data_buffer = b""
         self.pending_requests = {} # dictionary to track pending request confirmations: key = time (.1ms), value = request
         self.do_wait = False
@@ -350,8 +349,7 @@ class UserClient:
         pattern = self.accounts_searchbar.get().strip()
         data = ["All"] if not pattern else ["Like"] + [pattern]
 
-        self.request_counter += 1
-        request_id = self.request_counter
+        request_id = round(time.time() * 10000)
         request = DataObject(user=self.username, request=Request.GET_USERS, datalen=len(data), data=data, sequence=request_id)
         print(f"Sending: {request.to_string()}")
         self.server_socket.sendall(request.serialize())
@@ -405,17 +403,30 @@ class UserClient:
             self.accounts_back_button.config(state=tk.NORMAL)
         self.display_accounts()
 
-    def query_messages(self):
+    def query_messages(self, incoming_message=False):
         for item in self.chat_area.get_children():
             self.chat_area.delete(item)
 
         num_to_read = self.message_count_entry.get().strip()
-        if not num_to_read or not num_to_read.isdigit() or int(num_to_read) < 1 or int(num_to_read) > self.message_count:
-            messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.message_count}")
-            return
+
+        if incoming_message:
+            if not num_to_read:
+                num_to_read = str(1)
+            elif not num_to_read.isdigit() or int(num_to_read) < 1 or int(num_to_read) > self.message_count:
+                messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.message_count}")
+                return
+            else:
+                num_to_read = str(int(num_to_read) + 1)
+            # visually update (increment) numbers with incoming message
+            self.message_count_entry.delete(0, tk.END)
+            self.message_count_entry.insert(0, num_to_read)
+            self.message_count_label.config(text=f"You have {self.message_count} messages ({self.unread_count} unread). How many messages would you like to see?")
+        else:
+            if not num_to_read or not num_to_read.isdigit() or int(num_to_read) < 1 or int(num_to_read) > self.message_count:
+                messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.message_count}")
+                return
         
-        self.request_counter += 1
-        request_id = self.request_counter
+        request_id = round(time.time() * 10000)
         request = DataObject(user=self.username, request=Request.GET_MESSAGE, datalen=2, data=["0", num_to_read], sequence=request_id)
         print(f"Sending: {request.to_string()}")
         self.server_socket.sendall(request.serialize())
@@ -464,8 +475,7 @@ class UserClient:
             message_window.transient(self.window)
             message_window.grab_set()
 
-            self.request_counter += 1
-            request_id = self.request_counter
+            request_id = round(time.time() * 10000)
             request = DataObject(user=self.username, request=Request.CONFIRM_READ, datalen=1, data=[message_id], sequence=request_id)
             print(f"Sending: {request.to_string()}")
             self.server_socket.sendall(request.serialize())
@@ -491,8 +501,7 @@ class UserClient:
         message_string = message.serialize().decode("utf-8")
         print(f"Message:{message.to_string()}")
 
-        self.request_counter += 1
-        request_id = self.request_counter
+        request_id = round(time.time() * 10000)
         request = DataObject(user=self.username, request=Request.SEND_MESSAGE, datalen=1, data=[message_string], sequence=request_id)
 
         print(f"Sending: {request.to_string()}")
@@ -555,8 +564,10 @@ class UserClient:
                 else:
                     # handle new incoming messages
                     if response.request == Request.ALERT_MESSAGE:
-                        if response.status == Status.SUCCESS:
-                            pass
+                        if response.status == Status.PENDING:
+                            self.message_count += 1
+                            self.unread_count += 1
+                            self.query_messages(incoming_message=True)
 
                 serial, self.data_buffer = DataObject.get_one(self.data_buffer)
 

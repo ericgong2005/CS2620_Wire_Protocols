@@ -2,17 +2,10 @@ import sqlite3
 import atexit
 import signal
 import sys
-from pathlib import Path
 
 from Modules.Flags import Request, Status
 from Modules.DataObjects import DataObject, MessageObject
-
-PASSWORD_DATABASE = Path(__file__).parent.parent / "User_Data/passwords.db"
-MESSAGES_DATABASE = Path(__file__).parent.parent / "User_Data/messages.db"
-PASSWORD_DATABASE_SCHEMA = "Passwords (Username TEXT PRIMARY KEY, Password TEXT NOT NULL)"
-MESSAGES_DATABASE_SCHEMA = ("Messages (Id INTEGER PRIMARY KEY AUTOINCREMENT, Sender TEXT NOT NULL, " +
-                            "Recipient TEXT NOT NULL, Time_sent TEXT NOT NULL, Read BOOLEAN NOT NULL DEFAULT 0, " + 
-                            "Subject TEXT, Body TEXT)")
+from Modules.Constants import PASSWORD_DATABASE, MESSAGES_DATABASE, PASSWORD_DATABASE_SCHEMA, MESSAGES_DATABASE_SCHEMA
 
 class DatabaseManager:
     def __init__(self):

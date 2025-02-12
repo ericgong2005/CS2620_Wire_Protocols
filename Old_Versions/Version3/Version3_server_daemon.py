@@ -5,9 +5,9 @@ import sys
 import multiprocessing as mp
 import selectors
 
-from Code.Modules.DatabaseManager import DatabaseManager
+from Modules.DatabaseManager import DatabaseManager
 from Modules.DataObjects import DataObject, MessageObject
-from Code.Modules.SelectorData import SelectorData
+from Modules.SelectorData import SelectorData
 from Modules.Flags import Request, Status
 
 def database_request_handler(db : DatabaseManager, 

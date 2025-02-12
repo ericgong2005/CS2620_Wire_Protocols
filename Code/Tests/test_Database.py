@@ -1,4 +1,4 @@
-from Modules.database_manager import DatabaseManager
+from Modules.DatabaseManager import DatabaseManager
 from Modules.Flags import Status
 from Modules.DataObjects import MessageObject
 

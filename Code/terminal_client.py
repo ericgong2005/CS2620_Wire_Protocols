@@ -9,38 +9,18 @@ from Code.Modules.SelectorData import SelectorData
 
 # run python client.py HOSTNAME PORTNAME
 
-class LoginClient:
-    def __init__(self, server_socket):
-        self.window = tk.Tk()
-        self.server_socket = server_socket
-        self.window.title("Login")
-        self.create_login_ui()
-        self.window.protocol("WM_DELETE_WINDOW", self.close_connection)
-        self.window.mainloop()
-    
-    def create_login_ui(self):
-        """Create the login UI"""
-        self.username_label = tk.Label(self.window, text="Username:")
-        self.username_label.pack()
-        self.username_entry = tk.Entry(self.window)
-        self.username_entry.pack()
-        self.username_button = tk.Button(self.window, text="Submit Username", command=self.send_username)
-        self.username_button.pack()
-
-        self.password_label = tk.Label(self.window, text="Password:")
-        self.password_entry = tk.Entry(self.window, show="*")
-        self.password_button = tk.Button(self.window, text="Submit Password", command=self.send_password)
-    
-    def send_username(self):
-        """Send username to server"""
-        username = self.username_entry.get()
-        if not username:
-            messagebox.showwarning("Input Error", "Username cannot be empty!")
+def client_user(server_socket, username):
+    data_buffer = b""
+    logged_in = False
+    while not logged_in:
+        data = server_socket.recv(1024)
+        if not data:
+            print("Connection closed by the server.")
             return
         data_buffer += data
         serial, data_buffer = DataObject.get_one(data_buffer)
         if serial != b"":
-            recieved = True
+            logged_in = True
             response = DataObject(method="serial", serial=serial)
             print(f"{response.to_string()}")
             if response.request != Request.CONFIRM_LOGIN:
@@ -60,7 +40,7 @@ class LoginClient:
     client_selector.register(server_socket, selectors.EVENT_READ, data=SelectorData("User"))
     server_socket.setblocking(False)
 
-    while True:
+    while logged_in:
         # Send user input to database
         command = input(f"Enter a message as User {username}: ")
         if command == "exit":
@@ -79,6 +59,9 @@ class LoginClient:
             request.update(request=Request.DELETE_USER)
         elif lines[0] == "logout":
             request.update(request=Request.CONFIRM_LOGOUT)
+            logged_in = False
+        elif lines[0] == "read":
+            request.update(request=Request.CONFIRM_READ, datalen=len(lines[1:]), data=lines[1:])
         elif lines[0] == "message":
             recipient = input("Send Message To: ")
             subject = input("Enter Message Subject: ")

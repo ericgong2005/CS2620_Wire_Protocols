@@ -1,7 +1,11 @@
 import socket
 import sys
-import tkinter as tk
-from tkinter import messagebox, scrolledtext
+import selectors
+from datetime import datetime, timezone
+
+from Modules.Flags import Request, Status
+from Modules.DataObjects import DataObject, MessageObject
+from Code.Modules.SelectorData import SelectorData
 
 # run python client.py HOSTNAME PORTNAME
 

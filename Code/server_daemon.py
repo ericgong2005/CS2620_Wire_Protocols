@@ -66,10 +66,6 @@ def database_process(host, database_port, database_start):
 
     db = DatabaseManager()
 
-    # Add some fake users in case the db is empty
-    db.insert_user("a", "b")
-    db.insert_user("abcd", "1234")
-
     # bi-directional {username : address} and {address : username} for who is online
     online_username = {}
     online_address = {}
@@ -188,39 +184,23 @@ def user_process(client_connection, address, database, user_start, username) :
                         serial, keys["client"].data.inbound = DataObject.get_one(keys["client"].data.inbound)
                         if serial != b"":
                             client_request = DataObject(method="serial", serial=serial)
-                            if client_request.request == Request.GET_ONLINE_USERS:
-                                request = DataObject(request=Request.GET_ONLINE_USERS, user=username)
-                                keys["database"].data.outbound.put(request.serialize())
-                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
-                            elif client_request.request == Request.SEND_MESSAGE:
-                                request = DataObject(request=Request.SEND_MESSAGE, user=username, datalen=1, data = client_request.data)
-                                keys["database"].data.outbound.put(request.serialize())
-                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
+                            # Standard Commands can be passed directly to the database process
+                            if client_request.request in [Request.GET_ONLINE_USERS, Request.SEND_MESSAGE, Request.GET_USERS, 
+                                                          Request.DELETE_USER, Request.GET_MESSAGE, Request.CONFIRM_READ]:
+                                keys["database"].data.outbound.put(client_request.serialize())
+                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {client_request.to_string()}")
                             elif client_request.request == Request.CONFIRM_LOGOUT:
                                 client_request.update(status=Status.SUCCESS)
                                 keys["client"].data.outbound.put(client_request.serialize())
-                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
-                            elif client_request.request == Request.GET_USERS:
-                                request = client_request
-                                request.update(user=username)
-                                keys["database"].data.outbound.put(request.serialize())
-                            elif client_request.request == Request.DELETE_USER:
-                                request = DataObject(request=Request.DELETE_USER, user=username)
-                                keys["database"].data.outbound.put(request.serialize())
-                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
-                            elif client_request.request == Request.GET_MESSAGE:
-                                keys["database"].data.outbound.put(client_request.serialize())
-                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
-                            elif client_request.request == Request.CONFIRM_READ:
-                                keys["database"].data.outbound.put(client_request.serialize())
-                                print(f"{keys['database'].data.outbound.empty()} Outgoing to {source}: {request.to_string()}")
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to Client: {client_request.to_string()}")
+                            elif client_request.request == Request.ALERT_MESSAGE:
+                                client_request.update(status=Status.SUCCESS)
+                                keys["client"].data.outbound.put(client_request.serialize())
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to Client: {client_request.to_string()}")
                             elif client_request.request in [Request.CHECK_USERNAME, Request.CHECK_PASSWORD, Request.CONFIRM_LOGIN]:
                                 raise Exception("Unexpected Communication Flag")
                             else:
-                                client_request.update(status=Status.SUCCESS)
-                                keys["client"].data.outbound.put(client_request.serialize())
-                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}: {client_request.to_string()}")
-
+                                raise Exception("Unhandled Communication Flag")
                     if mask & selectors.EVENT_WRITE and not key.data.outbound.empty():
                         message = key.data.outbound.get()
                         key.fileobj.sendall(message)
@@ -234,29 +214,18 @@ def user_process(client_connection, address, database, user_start, username) :
                         if serial != b"":
                             database_response = DataObject(method="serial", serial=serial)
                             print(f"User Process {os.getpid()} recieved {database_response.to_string()}")
-                            if database_response.request == Request.GET_ONLINE_USERS:
+                            if database_response.request in [Request.GET_ONLINE_USERS, Request.SEND_MESSAGE, Request.ALERT_MESSAGE, 
+                                                             Request.GET_USERS, Request.GET_MESSAGE, Request.CONFIRM_READ]:
                                 keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
-                            if database_response.request == Request.SEND_MESSAGE:
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}: {database_response.to_string()}")
+                            elif database_response.request == Request.DELETE_USER:
                                 keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
-                            if database_response.request == Request.ALERT_MESSAGE:
-                                keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
-                            if database_response.request == Request.GET_USERS:
-                                keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
-                            if database_response.request == Request.GET_MESSAGE:
-                                keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
-                            if database_response.request == Request.CONFIRM_READ:
-                                keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
-                            if database_response.request == Request.DELETE_USER:
-                                keys["client"].data.outbound.put(database_response.serialize())
-                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}")
+                                print(f"{keys['client'].data.outbound.empty()} Outgoing to {source}: {database_response.to_string()}")
                                 break
-
+                            elif client_request.request in [Request.CHECK_USERNAME, Request.CHECK_PASSWORD, Request.CONFIRM_LOGIN]:
+                                raise Exception("Unexpected Communication Flag")
+                            else:
+                                raise Exception("Unhandled Communication Flag")
                     if mask & selectors.EVENT_WRITE and not key.data.outbound.empty():
                         message = key.data.outbound.get()
                         key.fileobj.sendall(message)

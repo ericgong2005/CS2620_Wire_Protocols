@@ -11,8 +11,8 @@ from Modules.SelectorData import SelectorData
 
 def client_user(server_socket, username):
     data_buffer = b""
-    recieved = False
-    while not recieved:
+    logged_in = False
+    while not logged_in:
         data = server_socket.recv(1024)
         if not data:
             print("Connection closed by the server.")
@@ -20,7 +20,7 @@ def client_user(server_socket, username):
         data_buffer += data
         serial, data_buffer = DataObject.get_one(data_buffer)
         if serial != b"":
-            recieved = True
+            logged_in = True
             response = DataObject(method="serial", serial=serial)
             print(f"{response.to_string()}")
             if response.request != Request.CONFIRM_LOGIN:
@@ -40,7 +40,7 @@ def client_user(server_socket, username):
     client_selector.register(server_socket, selectors.EVENT_READ, data=SelectorData("User"))
     server_socket.setblocking(False)
 
-    while True:
+    while logged_in:
         # Send user input to database
         command = input(f"Enter a message as User {username}: ")
         if command == "exit":
@@ -59,6 +59,7 @@ def client_user(server_socket, username):
             request.update(request=Request.DELETE_USER)
         elif lines[0] == "logout":
             request.update(request=Request.CONFIRM_LOGOUT)
+            logged_in = False
         elif lines[0] == "read":
             request.update(request=Request.CONFIRM_READ, datalen=len(lines[1:]), data=lines[1:])
         elif lines[0] == "message":

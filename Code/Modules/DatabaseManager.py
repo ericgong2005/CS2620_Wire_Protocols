@@ -136,77 +136,81 @@ class DatabaseManager:
 
     def handler(self, request : DataObject) -> tuple[Status, str]:
         print(f"Handler Recieved {request.to_string()}")
-        match request.request:
-            case Request.CHECK_USERNAME:
-                status, true_password = self.get_password(request.data[0])
-                request.update(status=status)
-            case Request.CHECK_PASSWORD:
-                username, password = request.data[0], request.data[1]
-                status, true_password = self.get_password(username)
-                if status == Status.MATCH:
-                    if password == true_password:
-                        request.update(status=Status.MATCH, datalen=1, data=[username])
+        try:
+            match request.request:
+                case Request.CHECK_USERNAME:
+                    status, true_password = self.get_password(request.data[0])
+                    request.update(status=status)
+                case Request.CHECK_PASSWORD:
+                    username, password = request.data[0], request.data[1]
+                    status, true_password = self.get_password(username)
+                    if status == Status.MATCH:
+                        if password == true_password:
+                            request.update(status=Status.MATCH, datalen=1, data=[username])
+                        else:
+                            request.update(status=Status.NO_MATCH, datalen=1, data=[username])
                     else:
-                        request.update(status=Status.NO_MATCH, datalen=1, data=[username])
-                else:
+                        request.update(status=Status.ERROR, datalen=0, data=[])
+                case Request.CREATE_USER:
+                    username, password = request.data[0], request.data[1]
+                    status, _password = self.get_password(username)
+                    if status == Status.SUCCESS:
+                        request.update(status=Status.MATCH, datalen=0, data=[])
+                        return request
+                    status = self.insert_user(request.data[0], request.data[1])
+                    request.update(status=status, datalen=0, data=[])
+                case Request.DELETE_USER:
+                    status = self.delete_user(request.user)
+                    request.update(status=status)
+                case Request.GET_USERS:
+                    command = request.data[0]
+                    usernames = []
+                    if command == "All":
+                        status, usernames = self.get_users("All")
+                        request.update(status=status, datalen=len(usernames), data=usernames)
+                    elif command == "Like":
+                        status, usernames = self.get_users("Like", request.data[1])
+                        request.update(status=status, datalen=len(usernames), data=usernames)
+                    else:
+                        request.update(status=Status.ERROR, datalen=0, data=[])
+                case Request.SEND_MESSAGE:
+                    message = MessageObject(method="serial", serial = request.data[0].encode("utf-8"))
+                    recipient = message.recipient
+                    status, _password = self.get_password(recipient)
+                    if status == Status.NO_MATCH:
+                        request.update(status=Status.NO_MATCH)
+                    else:
+                        status, id = self.insert_message(message)
+                        message.update(id=id)
+                        request.update(status=status, data=[message.serialize().decode("utf-8")])
+                        print(request.to_string())
+                case Request.DELETE_MESSAGE:
+                    message = MessageObject(method="serial", serial = request.data[0].encode("utf-8"))
+                    status = self.delete_message(message)
+                    request.update(status=status)
+                case Request.GET_MESSAGE:
+                    message_list = []
+                    if request.datalen == 3 and request.data[2] == "Unread":
+                        status, raw_list = self.get_message(request.user, int(request.data[0]), int(request.data[1]), True)
+                    else:
+                        status, raw_list = self.get_message(request.user, int(request.data[0]), int(request.data[1]), False)
+                    print(raw_list)
+                    for item in raw_list:
+                        message_list.append(MessageObject(method='tuple', tuple=item).serialize().decode("utf-8"))
+                    request.update(status=Status.SUCCESS, datalen = len(message_list), data=message_list)
+                case Request.CONFIRM_READ:
+                    status = self.confirm_read(request.user, request.data)
+                    request.update(status=status)
+                case Request.CONFIRM_LOGIN:
+                    status, unread, total = self.get_message_counts(request.user)
+                    request.update(status=status, datalen=2, data=[str(unread), str(total)])
+                case _:
                     request.update(status=Status.ERROR, datalen=0, data=[])
-            case Request.CREATE_USER:
-                username, password = request.data[0], request.data[1]
-                status, _password = self.get_password(username)
-                if status == Status.SUCCESS:
-                    request.update(status=Status.MATCH, datalen=0, data=[])
-                    return request
-                status = self.insert_user(request.data[0], request.data[1])
-                request.update(status=status, datalen=0, data=[])
-            case Request.DELETE_USER:
-                status = self.delete_user(request.user)
-                request.update(status=status)
-            case Request.GET_USERS:
-                command = request.data[0]
-                usernames = []
-                if command == "All":
-                    status, usernames = self.get_users("All")
-                    request.update(status=status, datalen=len(usernames), data=usernames)
-                elif command == "Like":
-                    status, usernames = self.get_users("Like", request.data[1])
-                    request.update(status=status, datalen=len(usernames), data=usernames)
-                else:
-                    request.update(status=Status.ERROR, datalen=0, data=[])
-            case Request.SEND_MESSAGE:
-                message = MessageObject(method="serial", serial = request.data[0].encode("utf-8"))
-                recipient = message.recipient
-                status, _password = self.get_password(recipient)
-                if status == Status.NO_MATCH:
-                    request.update(status=Status.NO_MATCH)
-                else:
-                    status, id = self.insert_message(message)
-                    message.update(id=id)
-                    request.update(status=status, data=[message.serialize().decode("utf-8")])
-                    print(request.to_string())
-            case Request.DELETE_MESSAGE:
-                message = MessageObject(method="serial", serial = request.data[0].encode("utf-8"))
-                status = self.delete_message(message)
-                request.update(status=status)
-            case Request.GET_MESSAGE:
-                message_list = []
-                if request.datalen == 3 and request.data[2] == "Unread":
-                    status, raw_list = self.get_message(request.user, int(request.data[0]), int(request.data[1]), True)
-                else:
-                    status, raw_list = self.get_message(request.user, int(request.data[0]), int(request.data[1]), False)
-                print(raw_list)
-                for item in raw_list:
-                    message_list.append(MessageObject(method='tuple', tuple=item).serialize().decode("utf-8"))
-                request.update(status=Status.SUCCESS, datalen = len(message_list), data=message_list)
-            case Request.CONFIRM_READ:
-                status = self.confirm_read(request.user, request.data)
-                request.update(status=status)
-            case Request.CONFIRM_LOGIN:
-                status, unread, total = self.get_message_counts(request.user)
-                request.update(status=status, datalen=2, data=[str(unread), str(total)])
-            case _:
-                request.update(status=Status.ERROR, datalen=0, data=[])
-        print(self.output())
-        return request
+            print(self.output())
+            return request
+        except Exception as e:
+            print(f"Database Encountered Error {e}")
+            request.update(status=Status.ERROR)
     
     def empty_table(self) -> Status:
         try:

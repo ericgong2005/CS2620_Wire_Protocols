@@ -211,8 +211,18 @@ class RegisterClient:
 
 
 class UserClient:
+
+    ACCOUNTS_LIST_LEN = 19
+
     def __init__(self, server_socket, username):
-        self.unread_count = 10
+        self.pending_requests = {} # dictionary to track pending request confirmations: key = time (.1ms), value = request
+        self.do_wait = False
+
+        self.accounts = []
+        self.accounts_offset = 0
+
+        self.unread_count = 0
+        self.message_count = 0
 
         self.username = username
         self.window = tk.Tk()
@@ -221,9 +231,8 @@ class UserClient:
         self.window.title(f"{username}'s Chat")
         self.check_user_status()
         self.create_chat_ui()
+        self.query_accounts()
 
-        self.pending_requests = {} # dictionary to track pending request confirmations: key = time (.1ms), value = request
-        self.do_wait = False
 
         # Set up socket with event binding
         self.window.tk.createfilehandler(self.server_socket, tk.READABLE, self.handle_server_response)
@@ -240,14 +249,16 @@ class UserClient:
         self.accounts_searchbar = tk.Entry(self.window, width=20)
         self.accounts_searchbar.grid(row=0, column=1, padx=1, pady=5, sticky="W")
 
-        self.accounts_search_button = tk.Button(self.window, text="Search")
+        self.accounts_search_button = tk.Button(self.window, text="Search", command=self.query_accounts)
         self.accounts_search_button.grid(row=0, column=2, padx=1, pady=5, sticky="W")
 
         self.accounts_list = tk.Text(self.window, wrap=tk.WORD, state=tk.DISABLED, height=20, width=50)
         self.accounts_list.grid(row=1, column=0, columnspan=3, padx=10, pady=5, sticky="W")
 
-        self.accounts_back = tk.Button(self.window, text="<").grid(row=2, column=0, pady=1, sticky="W")
-        self.accounts_next = tk.Button(self.window, text=">").grid(row=2, column=2, pady=1, sticky="E")
+        self.accounts_back_button = tk.Button(self.window, text="<", command=self.prev_account)
+        self.accounts_back_button.grid(row=2, column=0, pady=1, sticky="W")
+        self.accounts_next_button = tk.Button(self.window, text=">", command=self.next_account)
+        self.accounts_next_button.grid(row=2, column=2, pady=1, sticky="E")
 
         # Messages column
         self.unread_count_label = tk.Label(self.window, text=f"You have {self.unread_count} unread messages. How many would you like to read?")
@@ -261,11 +272,6 @@ class UserClient:
 
         self.chat_area = scrolledtext.ScrolledText(self.window, wrap=tk.WORD, state=tk.DISABLED, height=20, width=90)
         self.chat_area.grid(row=1, column=3, columnspan=3, padx=10, pady=5, sticky="W")
-
-        self.message_entry = tk.Entry(self.window, width=40)
-        self.message_entry.pack(pady=5)
-        self.send_button = tk.Button(self.window, text="Send", command=self.send_message)
-        self.send_button.pack(pady=5)
 
         self.window.update_idletasks()
 
@@ -291,11 +297,76 @@ class UserClient:
                     return
                 if response.status == Status.SUCCESS:
                     messagebox.showinfo("Sucess", "Logged In")
+                    self.unread_count, self.message_count = int(response.data[0]), int(response.data[1])
                 elif response.status == Status.MATCH:
                     messagebox.showerror("Error", "Already Logged In Elsewhere")
                     self.window.destroy()
                     LoginClient(self.server_socket)
                     return
+
+    def query_accounts(self):
+        pattern = self.accounts_searchbar.get().strip()
+        data = ["All"] if not pattern else ["Like"] + [pattern]
+
+        request_id = round(time.time() * 10000)  # Unique request ID
+        request = DataObject(user=self.username, request=Request.GET_USERS, datalen=len(data), data=data, sequence=request_id)
+        print(f"Sending: {request.to_string()}")
+        self.server_socket.sendall(request.serialize())
+
+        # Store pending confirmation event
+        self.pending_requests[request_id] = request.request
+        self.do_wait = True
+
+        self.window.after(100, self.wait_for_confirmation, request_id)
+    
+    def display_accounts(self):
+        self.accounts_list.config(state=tk.NORMAL)
+        self.accounts_list.delete(1.0, tk.END)
+        self.accounts_list.config(state=tk.DISABLED)
+        
+        if self.ACCOUNTS_LIST_LEN + self.accounts_offset >= len(self.accounts):
+            self.accounts_next_button.config(state=tk.DISABLED)
+        else:
+            self.accounts_next_button.config(state=tk.NORMAL)
+        if self.accounts_offset == 0:
+            self.accounts_back_button.config(state=tk.DISABLED)
+        else:
+            self.accounts_back_button.config(state=tk.NORMAL)
+
+        for i in range(self.accounts_offset, min(self.ACCOUNTS_LIST_LEN + self.accounts_offset, len(self.accounts))):
+            self.accounts_list.config(state=tk.NORMAL)
+            self.accounts_list.insert(tk.END, self.accounts[i] + "\n")
+            self.accounts_list.config(state=tk.DISABLED)
+    
+    def next_account(self):
+        self.accounts_offset += self.ACCOUNTS_LIST_LEN
+        if self.ACCOUNTS_LIST_LEN + self.accounts_offset >= len(self.accounts):
+            self.accounts_next_button.config(state=tk.DISABLED)
+        else:
+            self.accounts_next_button.config(state=tk.NORMAL)
+        if self.accounts_offset == 0:
+            self.accounts_back_button.config(state=tk.DISABLED)
+        else:
+            self.accounts_back_button.config(state=tk.NORMAL)
+        self.display_accounts()
+    
+    def prev_account(self):
+        self.accounts_offset -= self.ACCOUNTS_LIST_LEN
+        if self.ACCOUNTS_LIST_LEN + self.accounts_offset >= len(self.accounts):
+            self.accounts_next_button.config(state=tk.DISABLED)
+        else:
+            self.accounts_next_button.config(state=tk.NORMAL)
+        if self.accounts_offset == 0:
+            self.accounts_back_button.config(state=tk.DISABLED)
+        else:
+            self.accounts_back_button.config(state=tk.NORMAL)
+        self.display_accounts()
+            
+    def display_message(self, response):
+        self.chat_area.config(state=tk.NORMAL)
+        self.chat_area.insert(tk.END, response + "\n")
+        self.chat_area.config(state=tk.DISABLED)
+        self.chat_area.yview(tk.END)
 
     def read_messages(self):
         num_to_read = self.unread_count_entry.get().strip()
@@ -304,41 +375,40 @@ class UserClient:
             messagebox.showwarning("Input Error", f"Must be a number from 1 to {self.unread_count}")
             return
 
-    def send_message(self):
-        message = self.message_entry.get().strip()
+    # def send_message(self):
+    #     message = self.message_entry.get().strip()
 
-        if not message:
-            messagebox.showwarning("Input Error", "Message cannot be empty!")
-            return
+    #     if not message:
+    #         messagebox.showwarning("Input Error", "Message cannot be empty!")
+    #         return
 
-        request_id = round(time.time() * 10000)  # Unique request ID
-        request = DataObject(user=self.username, sequence=request_id)
+    #     request_id = round(time.time() * 10000)  # Unique request ID
+    #     request = DataObject(user=self.username, sequence=request_id)
 
-        if message == "get":
-            request.update(request=Request.GET_USERS)
-        elif message == "getonline":
-            request.update(request=Request.GET_ONLINE_USERS)
-        # elif message[:7] == "message":
-        #     request.update(request=Request.SEND_MESSAGE)
-        else:
-            request.update(request=Request.ALERT_MESSAGE, datalen=1, data=[message])
+    #     if message == "get":
+    #         request.update(request=Request.GET_USERS)
+    #     elif message == "getonline":
+    #         request.update(request=Request.GET_ONLINE_USERS)
+    #     # elif message[:7] == "message":
+    #     #     request.update(request=Request.SEND_MESSAGE)
+    #     else:
+    #         request.update(request=Request.ALERT_MESSAGE, datalen=1, data=[message])
         
-        print(f"Sending {request.to_string()}")
-        self.server_socket.sendall(request.serialize())
+    #     print(f"Sending {request.to_string()}")
+    #     self.server_socket.sendall(request.serialize())
 
-        # Store pending confirmation event
-        self.pending_requests[request_id] = request.request
-        self.do_wait = True
+    #     # Store pending confirmation event
+    #     self.pending_requests[request_id] = request.request
+    #     self.do_wait = True
 
-        # Check for confirmation every 100ms without freezing the UI
-        self.window.after(100, self.wait_for_confirmation, request_id)
+    #     # Check for confirmation every 100ms without freezing the UI
+    #     self.window.after(100, self.wait_for_confirmation, request_id)
 
     def wait_for_confirmation(self, request_id):
         if self.do_wait:
             if request_id in self.pending_requests:
                 self.window.after(100, self.wait_for_confirmation, request_id)
             else:
-                print("Message confirmed!")
                 self.do_wait = False
     
     def handle_server_response(self, file, event):
@@ -354,25 +424,25 @@ class UserClient:
             serial, data_buffer = DataObject.get_one(data_buffer)
             while serial != b"":
                 response = DataObject(method="serial", serial=serial)
-                print(response.to_string())
-                self.display_message(f"Server: {response.to_string()}")
+                print(f"Response:{response.to_string()}")
 
                 if response.sequence in self.pending_requests:
                     if response.request == self.pending_requests[response.sequence]:
-                        if response.status == Status.SUCCESS:
-                            self.display_message("Success!")
+                        if response.request == Request.GET_USERS:
+                            if response.status == Status.SUCCESS:
+                                self.accounts = response.data
+                                self.display_accounts()
+                            else:
+                                messagebox.showerror("Error", "An error has occurred.")
                         del self.pending_requests[response.sequence]
+                else:
+                    # handle new incoming messages
+                    pass
 
                 serial, data_buffer = DataObject.get_one(data_buffer)
 
         except BlockingIOError:
             pass
-    
-    def display_message(self, response):
-        self.chat_area.config(state=tk.NORMAL)
-        self.chat_area.insert(tk.END, response + "\n")
-        self.chat_area.config(state=tk.DISABLED)
-        self.chat_area.yview(tk.END)
 
     def close_connection(self):
         self.server_socket.close()

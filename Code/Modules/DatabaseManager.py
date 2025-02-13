@@ -1,3 +1,8 @@
+'''
+This file contains the DatabaseManager Class, which is used by the Database_process 
+to query and update the messages.db and passwords.db files
+'''
+
 import sqlite3
 import atexit
 import signal

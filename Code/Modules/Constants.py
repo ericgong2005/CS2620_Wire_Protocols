@@ -1,3 +1,7 @@
+'''
+This file contains constants used by the DataObjects Class and DatabaseManager Class
+'''
+
 from pathlib import Path
 
 from Modules.Flags import EncodeType

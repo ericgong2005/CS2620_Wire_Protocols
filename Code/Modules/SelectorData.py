@@ -1,3 +1,8 @@
+'''
+This file contains the SelectorData class used by the socket selectors implemented
+in the database_process and user_process
+'''
+
 from queue import Queue
 
 class SelectorData:

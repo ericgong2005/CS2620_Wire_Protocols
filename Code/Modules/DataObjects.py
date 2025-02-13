@@ -1,3 +1,9 @@
+'''
+This file is contains the DataObject and MessageObject Classes which are used to 
+serialize and pass data between the client and server processes, as well as between
+server processes
+'''
+
 from typing import Literal
 import time
 import json

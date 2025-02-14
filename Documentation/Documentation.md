@@ -2,9 +2,9 @@
 Charlie Chen and Eric Gong
 
 ## Contents
-- Folder and file layout
-- High-level Server Organization
-- DataObjects and Custom Serialization
+- **Folder and File Layout**
+- **High-level Server Organization**
+- **DataObjects and Custom Serialization**
 
 
 ## Folder and File Layout
@@ -101,8 +101,10 @@ A quick toy example:
 To determine a holistic comparison between the JSON and Custom wire protocol implementations, we examine three key metrics: the time to serialize and send a message as a function of message size, the time to recieve and deserialize a message as a function of message size, and the actual size of the serialization as a function of message size. We examine both English text and Chinese text as messages, so as to characterize the impact that special characters (such as chinese characters, emoji symbols, or similar unicode characters) have.
 
 **Time to Serialize as a function of Message Size:**
-![Time to Serialize as a function of Message Size for English Text](../Code/Analytics/Plots/ENGLISH_MESSAGE_SEND_TIME.png)
-![Time to Serialize as a function of Message Size for Chinese Text](../Code/Analytics/Plots/CHINESE_MESSAGE_SEND_TIME.png)
+<div style="display: flex; justify-content: space-around; align-items: center;">
+  <img src="../Code/Analytics/Plots/ENGLISH_MESSAGE_SEND_TIME.png" alt="Time to Serialize as a function of Message Size for English Text" width=40%>
+  <img src="../Code/Analytics/Plots/CHINESE_MESSAGE_SEND_TIME.png" alt="Time to Serialize as a function of Message Size for Chinese Text" width=40%>
+</div>
 
 # Notes and Considerations:
 - On the matter of Custom serialization, each encoding and decoding is a linear scan through the utf-8 byte encoding of each Field or Data item. We currently scan multiple times, as seen in the toy example, but this could be changed to a more advanced single scan. For instance, when encode is applied twice "\n" in fields would directly map to "%01", "%" in fields would map to "%00". Similiarily "\n" in the data list elements maps to "%001" and "%" in data list elements maps to "%000". Indeed, given that both the JSON and Custom serialization implementations are seen to scale linearly in Send Time with respects to message size, reducing the number of linear passes will make the Custom implementation more comperable to the JSON serialization method

@@ -17,16 +17,16 @@ Start up the server by running "python ServerDaemon.py HOSTNAME CLIENTPORT DATAB
 Startup the client by running "python Client.py HOSTNAME CLIENTPORT"
 
 ### Testing and Debugging
-Run the Unit tests using "pytest"
+Run the Unit tests by running "pytest"
 
 Startup the terminal client (for debugging) by running "python TerminalClient.py HOSTNAME CLIENTPORT"
 
 ### Analytics for Custom and JSON Wire Protocols
-Collect data using "python Analytics.py Generate HOSTNAME PORTNAME"
+Collect data by running "python Analytics.py Generate HOSTNAME PORTNAME"
 
-Analyze data using "python Analytics.py Analysis"
+Analyze data by running "python Analytics.py Analysis"
 
-Print the size of the base English and Chinese messages using "python Analytics.py Size"
+Print the size of the base English and Chinese messages by running "python Analytics.py Size"
 
 ## Folder and File Layout
 Directoy names are bolded, file names are italicized. Some less relevant directories and files are ommitted; the ommission is noted in the bullet of the parent directory.

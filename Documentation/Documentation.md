@@ -86,13 +86,23 @@ We support the following fields in the MessageObject:
 # Custom Serialization:
 For the Custom serialization, we hoped to design a serialization method that is highly efficient, containing minimal overhead, and thus being close to the same size as the data to be sent. To do this, we choose to separate each of the fields via "\n". To ensure that the fields themselves do not contain "\n", we define an encoder that maps "\n" to "%0". To ensure that the fields themselves do not contain "%0" naturally, we map all "%" to "%0". Thus, this creates a bijective mapping between any arbitrary field (which may need to be re-represented as a string, such as the case of the Request or Status flags) and a version of the field guaranteed not to contain "\n".
 
-After separating fields with "\n", we wish to further ensure that we can ensure the start and end of messages can be easily identified. This is necessary if multiple messages are read out of the socket in a single instance, or if a long message breaks across muliple reads out of the socket. To do this, we serialize the concatenation of the fields, and wrap the concatenation with "\n". If one of the fields is a list, as is the case with DataObject.data, we can encode the list in the same method
+After separating fields with "\n", we wish to further ensure that we can ensure the start and end of messages can be easily identified. This is necessary if multiple messages are read out of the socket in a single instance, or if a long message breaks across muliple reads out of the socket. To do this, we serialize the concatenation of the fields, and wrap the concatenation with "\n". If one of the fields is a list, as is the case with DataObject.data, we can encode the list first, using the same method. Note that our encode and decode functions work directly upon the byte string (which is derived via str.encode("utf-8"))
 
 A quick toy example:
-1. We start with Field1, Field2, List\[Data1, Data2\]
-2. We encode the list: Field1, Field2, (Encoded(Data1) + "\n" + Encoded(Data2))
-3. We encode the Fields: Encoded(Field1) + "\n" + Encoded(Field2) + "\n" + Encoded((Encoded(Data1) + "\n" + Encoded(Data2)))
-4. We encode to yeild the final serialized string: "\n" + Encoded(Encoded(Field1) + "\n" + Encoded(Field2) + "\n" + Encoded((Encoded(Data1) + "\n" + Encoded(Data2)))) + "\n"
+1. We want to encode: b"Hello\nTo\nYou", b"Goodbye", \[b"Message\nHere", b"100%\nIs Larger Than\n90%"\]
+2. We encode the items of the list: b"Message%1Here", b"100%0%1Is Larger Than%190%0"
+3. We concatentate the list with "\n" into a single byte string: b"Message%1Here\n100%0%1Is Larger Than%190%0"
+4. We encode each field: b"Hello%1To%1You", b"Goodbye", b"Message%01Here%1100%00%1Is Larger Than%0190%00"
+5. We concatenate the fields with "\n": b"Hello%1To%1You\nGoodbye\nMessage%01Here%1100%00%1Is Larger Than%0190%00"
+6. We encode again, and wrap in "\n": b"\nHello%01To%01You%1Goodbye%1Message%001Here%01100%000%1Is Larger Than%00190%000\n"
+7. We reverse these steps to extract the original messages
 
-Notes:
-- Each encoding is a linear scan through the utf-8 byte encoding of each Field or Data item. We currently scan multiple times, but this could be changed to a more advanced single scan. For instance, a double encode changes "\n" to "%01" and a "%" to "%00", so this could be done in one pass instead of 2. 
+# JSON and Custom Wire Protocol Benchmarking
+To determine a holistic comparison between the JSON and Custom wire protocol implementations, we examine three key metrics: the time to serialize and send a message as a function of message size, the time to recieve and deserialize a message as a function of message size, and the actual size of the serialization as a function of message size. We examine both English text and Chinese text as messages, so as to characterize the impact that special characters (such as chinese characters, emoji symbols, or similar unicode characters) have.
+
+**Time to Serialize as a function of Message Size:**
+![Time to Serialize as a function of Message Size for English Text](../Code/Analytics/Plots/ENGLISH_MESSAGE_SEND_TIME.png)
+![Time to Serialize as a function of Message Size for Chinese Text](../Code/Analytics/Plots/CHINESE_MESSAGE_SEND_TIME.png)
+
+# Notes and Considerations:
+- On the matter of Custom serialization, each encoding and decoding is a linear scan through the utf-8 byte encoding of each Field or Data item. We currently scan multiple times, as seen in the toy example, but this could be changed to a more advanced single scan. For instance, when encode is applied twice "\n" in fields would directly map to "%01", "%" in fields would map to "%00". Similiarily "\n" in the data list elements maps to "%001" and "%" in data list elements maps to "%000". Indeed, given that both the JSON and Custom serialization implementations are seen to scale linearly in Send Time with respects to message size, reducing the number of linear passes will make the Custom implementation more comperable to the JSON serialization method

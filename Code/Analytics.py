@@ -109,6 +109,9 @@ if __name__ == "__main__":
         generate_timing(sys.argv[2], int(sys.argv[3]))
     elif len(sys.argv) == 2 and sys.argv[1] == "Analyze":
         analyze_timing()
+    elif len(sys.argv) == 2 and sys.argv[1] == "Size":
+        print("English: ", len(SHORT_ENGLISH_MESSAGE.encode('utf-8')), "bytes\n")
+        print("Chinese: ", len(SHORT_CHINESE_MESSAGE.encode('utf-8')), "bytes\n")
     else:
         print("Usage: python Analytics.py Analyze OR python Analytics.py Generate HOSTNAME PORTNAME")
         sys.exit(1)

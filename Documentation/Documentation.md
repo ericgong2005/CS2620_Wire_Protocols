@@ -2,10 +2,31 @@
 Charlie Chen and Eric Gong
 
 ## Contents
+- **Usage**
 - **Folder and File Layout**
 - **High-level Server Organization**
 - **DataObjects and Custom Serialization**
+- **Testing**
 
+## Usage
+All commands should be executed in the Code directory.
+
+### Normal Operation
+Start up the server by running "python ServerDaemon.py HOSTNAME CLIENTPORT DATABASEPORT"
+
+Startup the client by running "python Client.py HOSTNAME CLIENTPORT"
+
+### Testing and Debugging
+Run the Unit tests using "pytest"
+
+Startup the terminal client (for debugging) by running "python TerminalClient.py HOSTNAME CLIENTPORT"
+
+### Analytics for Custom and JSON Wire Protocols
+Collect data using "python Analytics.py Generate HOSTNAME PORTNAME"
+
+Analyze data using "python Analytics.py Analysis"
+
+Print the size of the base English and Chinese messages using "python Analytics.py Size"
 
 ## Folder and File Layout
 Directoy names are bolded, file names are italicized. Some less relevant directories and files are ommitted; the ommission is noted in the bullet of the parent directory.
@@ -45,6 +66,8 @@ We choose this framework for three main reasons: Scalability, Simplicity, and Se
 ### Scalability
 As opposed to having a single process handle incomming connections, Client requests, and Database queries, we choose to spawn multiple processes to handle these tasks. This supports scalability as it allows for the batching of tasks. For instance, imagine the process of querying messages: if a Client requests 10 messages, the User process (on the Server side) could request 100 from the database (or even, the User process could pre-laod 100 messages upon Client login), and provide 10 to the Client. Should the Client request 10 more messages or 20 more, no additional database queries are needed. In addition, simple tasks, such as ensuring the validity of requests can be conducted in a User process running concurrently to other user processes. If all Server-side tasks were handled one-at-a time by a single process, the Server would suffer if more clients attempted to connect. While it is true that no server can support arbitrarily large number of processes, additional cores and additional memory to host more processes is far more cost-effective than attempting to hyper-optimize single-threaded code to support more users.
 
+Furthermore, note that by having the database process as a separate process that communicates with the User processes through sockets, this ensures that the database process and database files need not be on the same server as the Daemon or User processes. (We would simply start up the Database process with a separate script, as opposed to having it be started by the Daemon process, which we currently do for simplicity). This is particularly useful in distributed systems, where spatial locality guarantees are weak, if not non-existent. 
+
 ### Simplicity
 One may wonder about the choice to have exactly a single Database process. Indeed, our server has only one process handle all database queries. We do this for simplicity: with a single Database process, we need not worry about implementing locks to prevent race conditions and concurrent writes. We note however, that a signle Database process is sufficient for the purposes of a messaging platform: the majority of the user's time will be spent reading messages, drafting messages, and being idle; as such for any given user, the queries generated to the database will be in bursts and fairly infrequent. In combination with techniques such as batching - made possible by dedicated user processes - it is viable to have a single dedicated Database process.
 
@@ -53,7 +76,6 @@ There are a plethora of security benefits to having dedicated processes. To name
 - It is possible to restrict the permissions of a User process (ie: file system restrictions via *chroot*), such that even if Client is malicious and intelligent, capable of subverting a server-side process, the damages can be mitigates. Having the ability to directly communicate with the server increases the risk of subverting a process with high enough priviledge and file access permission to do damage
 - It is possible to mitigate the damage of potential implementation bugs. Imagine that an error in the de-serialization process caused the process to crash. In a single process server, the entire server would come to a halt. In the case of a multi-process system, only a single User Process would crash, limiting the impact of damages.
 - It is possible to efficiently implement complex authentication and encryption techniques with minimal negative impacts on scalability. The Diffie-Hellman Protocol, a standard method for negotiating a symmetric key for secure communications, requires a non-trivial amount of time. Should it be conducted with a single server process that directly handles all clients, the negative impacts on scalability would be noticable, and more complex cryptographic techniques would only result in more negative impacts.
-
 
 ### Notes and Considerations
 - On the matter of the benefits of this framework, while it is true that we have not had the time to implement many of the mentioned strategies for fully levveraging a multi-process server, by creating this foundation, we make such strategies possible, which ultimately ensures scalability over systems for which these strategies cannot be implemented, due to an insufficient foundation.
@@ -133,3 +155,10 @@ In terms of scalability, both implementations can be easily adapted should there
 
 ### Notes and Considerations:
 - On the matter of the Custom serialization bottlneck, each encoding and decoding is a linear scan through the utf-8 byte encoding of each Field or Data item. We currently scan multiple times, as seen in the toy example, but this could be changed to a more advanced single scan. For instance, when encode is applied twice "\n" in fields would directly map to "%01", "%" in fields would map to "%00". Similiarily "\n" in the data list elements maps to "%001" and "%" in data list elements maps to "%000". Indeed, given that both the JSON and Custom serialization implementations are seen to scale linearly in Send Time with respects to message size, reducing the number of linear passes will make the Custom implementation more comperable to the JSON serialization method.
+
+## Testing
+### Unit Testing
+We use the pytest framework to execute code and assert the validity of the results. Specifically, we test the validity of the DatabaseManager Class in *test_DatabaseManager.py* and test the validity of the DataObject and MessageObject Classes in *test_DataObjects.py*. In total, we test the validity of 218 Assertions for the DataObject and MessageObject Classes (between the Custom and JSON implementations), including the Custom Encoding/Decoding process, normal operation with edge cases, and expected instances for Exceptions to be throw (ie: attempting to deserialize an invalid serial). In total, we test the validity of 108 Assertions for the DatabaseManager, encompassing the various functionalities the DatabaseManager provides, testing tasks that ought to suceed, testing when tasks ought to return with a flag indicating the action cannot be carried out (such as attempting to add an already existing user), and testing the internal state of  the database after a specific series of actions.
+
+### Integration Testing and Roleplaying-based Testing
+We test the Client interface simply by interacting with it, and examining the logs printed by the client process, as well as the various processes in the Server-side to ensure that expected actions are carried out correctly. In addition, we built a terminal-based version of the client, more suitable for fast testing of the Server-side logic. We execute integration testing of the server through the terminal-based client, ensuring that the Login process logic is correct for Client logins, and that the User Process properly routes Requests to the database process, and that the proper response is returned. Note that by Unit testing the database process, we need not expend additional effort during integration testing to confirm the validitly of database operations; we need only confirm that logic outside of the DatabaseManger Class, within the Login process, User process, and Database process are valid.

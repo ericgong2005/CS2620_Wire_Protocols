@@ -57,6 +57,7 @@ class LoginClient:
                 return
             data_buffer += data
             serial, data_buffer = DataObject.get_one(data_buffer)
+            # If we have a full DataObject incoming
             if serial != b"":
                 received = True
                 response = DataObject(method="serial", serial=serial)
@@ -116,6 +117,7 @@ class LoginClient:
                     return
 
     def close_connection(self):
+        """Specifies behavior upon closing the window"""
         self.server_socket.close()
         self.window.destroy()
 
@@ -153,10 +155,12 @@ class RegisterClient:
         self.window.update_idletasks()
 
     def send_new_user(self):
+        """Sends the server a request to register new user upon submission"""
         username = self.username_entry.get()
         password = self.password_entry.get()
         confirm_password = self.confirm_password_entry.get()
 
+        # Input validation checks
         if not username:
             messagebox.showwarning("Input Error", "Username cannot be empty!")
             return
@@ -223,8 +227,8 @@ class UserClient:
 
     def __init__(self, server_socket, username):
         self.data_buffer = b""
-        self.pending_requests = {} # dictionary to track pending request confirmations: key = time (.1ms), value = request
-        self.do_wait = False
+        self.pending_requests = {} # dictionary to track pending request confirmations: key = time (1 microsecond), value = request
+        self.do_wait = False # tells process with pending request when it's fulfilled
 
         self.accounts = []
         self.accounts_offset = 0
@@ -242,13 +246,14 @@ class UserClient:
         self.query_accounts()
 
 
-        # Set up socket with event binding
+        # Set up socket with event binding (tkinter function similar to selector)
         self.window.tk.createfilehandler(self.server_socket, tk.READABLE, self.handle_server_response)
 
         self.window.protocol("WM_DELETE_WINDOW", self.close_connection)
         self.window.mainloop()
     
     def create_chat_ui(self):        
+        """Generate Tkinter Widgets for GUI"""
 
         # Accounts column
         self.accounts_label = tk.Label(self.window, text="Accounts:")
@@ -334,6 +339,7 @@ class UserClient:
         self.window.update_idletasks()
 
     def check_user_status(self):
+        """Verifies this user is not currently logged in on another machine. Runs immediately upon login."""
         data_buffer = b""
         received = False
         while not received:
@@ -363,10 +369,11 @@ class UserClient:
                     return
 
     def query_accounts(self):
+        """Queries server user process for list of accounts matching wildcard pattern"""
         pattern = self.accounts_searchbar.get().strip()
-        data = ["All"] if not pattern else ["Like"] + [pattern]
+        data = ["All"] if not pattern else ["Like"] + [pattern] # Default is to list all accounts
 
-        request_id = round(time.time() * 1000000)
+        request_id = round(time.time() * 1000000) # unique request ID
         request = DataObject(user=self.username, request=Request.GET_USERS, datalen=len(data), data=data, sequence=request_id)
         print(f"Sending: {request.to_string()}")
         self.server_socket.sendall(request.serialize())
@@ -375,9 +382,10 @@ class UserClient:
         self.pending_requests[request_id] = request.request
         self.do_wait = True
 
-        self.window.after(100, self.wait_for_confirmation, request_id)
+        self.window.after(100, self.wait_for_confirmation, request_id) # check every 100ms if request was filled
     
     def display_accounts(self):
+        """Displays list of requested accounts (not including user)"""
         self.accounts_list.config(state=tk.NORMAL)
         self.accounts_list.delete(1.0, tk.END)
         self.accounts_list.config(state=tk.DISABLED)
@@ -397,6 +405,7 @@ class UserClient:
             self.accounts_list.config(state=tk.DISABLED)
     
     def next_account(self):
+        """Displays next page of accounts"""
         self.accounts_offset += self.ACCOUNTS_LIST_LEN
         if self.ACCOUNTS_LIST_LEN + self.accounts_offset >= len(self.accounts):
             self.accounts_next_button.config(state=tk.DISABLED)
@@ -409,6 +418,7 @@ class UserClient:
         self.display_accounts()
     
     def prev_account(self):
+        """Displays previous page of accounts"""
         self.accounts_offset -= self.ACCOUNTS_LIST_LEN
         if self.ACCOUNTS_LIST_LEN + self.accounts_offset >= len(self.accounts):
             self.accounts_next_button.config(state=tk.DISABLED)
@@ -421,6 +431,7 @@ class UserClient:
         self.display_accounts()
 
     def query_messages(self, incoming_message=False):
+        """Queries server for all of user's messages"""
         for item in self.chat_area.get_children():
             self.chat_area.delete(item)
 
@@ -443,7 +454,7 @@ class UserClient:
                 messagebox.showwarning("Input Error", f"Must be a number greater than or equal to 0!")
                 return
         
-        request_id = round(time.time() * 1000000)
+        request_id = round(time.time() * 1000000) # For pending requests
         request = DataObject(user=self.username, request=Request.GET_MESSAGE, datalen=2, data=["0", num_to_read], sequence=request_id)
         print(f"Sending: {request.to_string()}")
         self.server_socket.sendall(request.serialize())
@@ -455,6 +466,7 @@ class UserClient:
         self.window.after(100, self.wait_for_confirmation, request_id)
             
     def display_messages(self, messages):
+        """Displays user messages upon receipt"""
         for serial in messages:
             serial = serial.encode("utf-8")
             message = MessageObject(method="serial", serial=serial)
@@ -466,6 +478,7 @@ class UserClient:
             self.chat_area.insert("", "end", values=(message.id, formatted_datetime, message.sender, message.subject, message.body))
 
     def open_message(self, event):
+        """Open up a popup to view a message"""
         item = self.chat_area.identify_row(event.y)
         if item:
             message_id, time_sent, sender, subject, body = self.chat_area.item(item, "values") 
@@ -493,6 +506,7 @@ class UserClient:
             message_window.transient(self.window)
             message_window.grab_set()
 
+            # Mark message as read
             request_id = round(time.time() * 1000000)
             request = DataObject(user=self.username, request=Request.CONFIRM_READ, datalen=1, data=[message_id], sequence=request_id)
             print(f"Sending: {request.to_string()}")
@@ -505,13 +519,16 @@ class UserClient:
             self.window.after(100, self.wait_for_confirmation, request_id)
     
     def send_message(self):
+        """Server request to send message"""
         recipient = self.recipient_entry.get().strip()
         subject = self.subject_entry.get().strip()
         body = self.body_text.get("1.0", tk.END).strip()  # Get text from Text widget
+        # Client-side input validation
         if not recipient or not subject or not body:
             messagebox.showwarning("Warning", "All fields are required!")
             return
         
+        # Message timestamp (different from request ID)
         current_time = datetime.now(timezone.utc)
         iso_time = current_time.isoformat(timespec='seconds')
         
@@ -537,6 +554,7 @@ class UserClient:
         self.window.after(100, self.wait_for_confirmation, request_id)
     
     def delete_selected_messages(self):
+        """Server request to delete messages selected in chat_area"""
         selected_items = self.chat_area.selection()
 
         if not selected_items:
@@ -570,6 +588,7 @@ class UserClient:
         self.unread_count -= num_unread
         num_to_read = self.message_count_entry.get().strip()
 
+        # Update number of messages on UI
         if int(num_to_read) <= num_messages:
             self.message_count_entry.delete(0, tk.END)
             self.message_count_label.config(text=f"You have {self.message_count} messages ({self.unread_count} unread). How many messages would you like to see?")
@@ -579,6 +598,7 @@ class UserClient:
             self.message_count_entry.insert(0, num_to_read)
             self.message_count_label.config(text=f"You have {self.message_count} messages ({self.unread_count} unread). How many messages would you like to see?")
     
+        # Send pending delete request for every message to server
         for message_id in message_ids:
             request_id = round(time.time() * 1000000)
             request = DataObject(user=self.username, request=Request.DELETE_MESSAGE, datalen=1, data=[str(message_id)], sequence=request_id)
@@ -593,6 +613,7 @@ class UserClient:
             self.window.after(100, self.wait_for_confirmation, request_id)
 
     def logout(self):
+        """Sends server request to log user out"""
         request_id = round(time.time() * 1000000)
         request = DataObject(user=self.username, request=Request.CONFIRM_LOGOUT, sequence=request_id)
         print(f"Sending: {request.to_string()}")
@@ -605,6 +626,7 @@ class UserClient:
         self.window.after(100, self.wait_for_confirmation, request_id)
     
     def delete_account(self):
+        """Sends server request to delete account. Waits for confirmation."""
         confirm = messagebox.askyesno("Confirm Account Deletion", "Are you sure you want to delete your account? This action is irreversible!")
         if not confirm:
             return
@@ -621,6 +643,7 @@ class UserClient:
         self.window.after(100, self.wait_for_confirmation, request_id)
 
     def wait_for_confirmation(self, request_id):
+        """Helper function to check if pending request has been filled every 100ms"""
         if self.do_wait:
             if request_id in self.pending_requests:
                 self.window.after(100, self.wait_for_confirmation, request_id)
@@ -628,6 +651,7 @@ class UserClient:
                 self.do_wait = False
     
     def handle_server_response(self, file, event):
+        """Listens on server_socket. Primarily for handling request confirmations"""
         try:
             data = self.server_socket.recv(1024)
             if not data:
@@ -679,12 +703,12 @@ class UserClient:
                                 new_socket.connect((sys.argv[1], int(sys.argv[2])))  # Get host/port from sys.argv
                                 LoginClient(new_socket)
                         del self.pending_requests[response.sequence]
-                # handle new incoming messages
+                # handle new incoming messages (from other users)
                 if response.request == Request.ALERT_MESSAGE:
                     if response.status == Status.PENDING:
                         self.message_count += 1
                         self.unread_count += 1
-                        self.query_messages(incoming_message=True)
+                        self.query_messages(incoming_message=True) # update app
 
                 serial, self.data_buffer = DataObject.get_one(self.data_buffer)
 

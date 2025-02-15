@@ -1,6 +1,8 @@
 # CS2620 Design Project 1: Wire Protocols
 
-The documentation for this project is located in Code/Documentation/Documentation.md
+The documentation for this project is located in *Documentation/Documentation.md*
+
+The details on how we approach each aspect of the assignment's specification can be found in *Documentation/Assignment_specifications.md*
 
 Run the server with "python ServerDaemon.py HOSTNAME SERVER_PORT DATABASE_PORT" in the Code directory
 

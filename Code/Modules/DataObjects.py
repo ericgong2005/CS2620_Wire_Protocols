@@ -11,6 +11,7 @@ import json
 from Modules.Flags import Request, Status, EncodeType
 from Modules.Constants import ENCODE_TYPE, CURRENT_VERSION
 
+# Encoding and Decoding functions for Custom Wire Protocol, details in documentation
 def byte_encode(input : bytes) -> bytes:
     '''
     Encode the string by replacing b"\n" with b"%1" and b"%" with b"%0"
@@ -50,6 +51,8 @@ def byte_decode(input : bytes) -> bytes:
         raise Exception(r"Invalid Encoding: % at the end")
     return bytes(decoded)
 
+
+# Dataobject for Client-Server communication and inter-process communication within the server
 class DataObject:
     def __init__(self, 
                  method : Literal["args", "serial"] = "args", 
@@ -222,6 +225,7 @@ class DataObject:
 
         self.typecheck()
 
+    # extract a single communication from raw bytes from the socket
     @staticmethod
     def get_one(input : bytes) -> tuple[bytes, bytes]:
         if not input or input == b"":
@@ -253,6 +257,7 @@ class DataObject:
                     return (input[:i+1], input[i+1:])
             return (b"", input)
     
+    # Useful for logging and debugging
     def to_string(self):
         return (f"\nDataObject uses {self.encode_type}, and contains:\n" +
                 f"\t{self.request}\n" +
@@ -447,9 +452,12 @@ class MessageObject:
 
         self.typecheck()
     
+    # Given SQLlite3 inserts messages into the database as a tuple, 
+    # it is easier to be able to directly create this tuple with a built-in function
     def to_sql_tuple(self) -> tuple[str, str, str, int, str, str]:
         return (self.sender, self.recipient, self.time_sent, int(self.read), self.subject, self.body)
     
+    # Useful for logging and debugging
     def to_string(self):
         return (f"\nMessageObject uses {self.encode_type}, and contains:\n" +
                 f"\tID: {self.id}\n"

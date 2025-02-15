@@ -29,6 +29,7 @@ class DatabaseManager:
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
+    # various handlers for supporting instantiation and deletion, particularly under adverse circumstances
     def close(self):
         self.passwords.close()
         self.messages.close()
@@ -43,6 +44,7 @@ class DatabaseManager:
         self.close()
         sys.exit(0) 
 
+    # Modularized functionalities that are needed to maintain and update the database info
     def insert_user(self, username : str, password : str) -> Status:
         if not username or not password:
             return Status.ERROR
@@ -78,7 +80,6 @@ class DatabaseManager:
             result = self.passwords_cursor.fetchall()
         elif command == "Like":
             self.passwords_cursor.execute("SELECT Username FROM Passwords WHERE Username Like ?", (search, ))
-            # POTENTIAL SQL INJECTION OPPORTUNITY? MIGHT NEED TO WRITE A SANITIZER...
             result = self.passwords_cursor.fetchall()
         else:
             return (Status.ERROR, None)
@@ -139,6 +140,7 @@ class DatabaseManager:
         total = self.messages_cursor.fetchone()[0]
         return (Status.SUCCESS, unread, total)
 
+    # Overall handler that parses DataObject requests and calls the appropriate functionality
     def handler(self, request : DataObject) -> tuple[Status, str]:
         print(f"Handler Recieved {request.to_string()}")
         try:
@@ -216,6 +218,8 @@ class DatabaseManager:
             print(f"Database Encountered Error {e}")
             request.update(status=Status.ERROR)
     
+
+    # The below functionalities are useful for debugging and testing purposes
     def empty_table(self) -> Status:
         try:
             self.passwords_cursor.execute("DELETE FROM Passwords")

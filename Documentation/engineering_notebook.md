@@ -1,4 +1,5 @@
 # Engineering Notebook
+The Engineering notebook contains brief notes representing ideas and thoughts during the implementation process. It is meant not as an explainer of code, but of thinking process. To see clear documentation of the current implementation, refer to *Documentation.md*
 
 ## Contents
 - Quick notes

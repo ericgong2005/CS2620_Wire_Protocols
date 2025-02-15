@@ -6,8 +6,8 @@
 - uses commandline flags
 
 ## Usage
-- Error when username does not exist
-- Error when password is wrong
+- Correctly throws Error when username does not exist
+- Correctly throws Error when password is wrong
 - Can create new user
 - Can login properly
 - Can search for users

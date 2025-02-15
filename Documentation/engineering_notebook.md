@@ -402,6 +402,7 @@ We split the plan down into a couple modularized and separate implementations. T
 Client specifications:
 - The client, upon launch, should attempt to connect to the server
 - If successful, the client can switch to the "handling and displaying messages" component
+- Upon openiing this process, the client should check if the user is currently logged in anywhere else
 
 Server specifications:
 - The server should run a Daemon process to handle incoming connections

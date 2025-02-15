@@ -5,6 +5,7 @@ Charlie Chen and Eric Gong
 - **Usage**
 - **Folder and File Layout**
 - **High-level Server Organization**
+- **High-level Client Organization**
 - **DataObjects and Custom Serialization**
 - **Testing**
 
@@ -82,6 +83,24 @@ There are a plethora of security benefits to having dedicated processes. To name
 - On the matter of creating new processes, we use the *multiprocessing* library to handle the creation (via spawning) of the Database process, Login processes, and User processes. Due to cross-system compatibility with POSIX systems, we cannot use os.fork from the *os* library, nor can we use the fork method provided by *multiprocessing*. However, spawning is also convenient as it creates a completely new python environment, maintaining no state from the parent. This makes it easier to safely use global variables that would otherwise be a potential source for race conditions.
 - On the matter of batching requests, we note that it would be unwise to attempt to batch on the client end. In the case of getting messages, for example, there are no gurantees on the network speed or memory capacity of the user's device. It would be unwise to send 100 messages at once to the client, and far better instead, to store them on a dedicated Client process.
 - On the matter of a singular Database Process, we note that crude (low granularity) locking mechanisms that are not well engineered provide no gurantees of performance over having a single database process, given that crude locking mechanisms essentially limit the writing of the files to one-process-at-a-time. Yet the finer grain the scheme, the more locks that are implemented, the more likely implementations may be imperfect and contain bugs.
+
+## High-level Client Organization and Communication Flow
+Our client switches between three main processes: the initial Login page, a user Registration page, and the main User client.
+
+### Initial Connection
+Upon opening the app, the client tries to establish a connection with the server. Apart from a few exceptions (see user client initialization and incoming messages), communications are initiated by the client with a pending request, and the client awaits a confirmation response from the server. 
+
+### Client Initialization
+After registering for an account/logging in (and sending info/receiving server confirmation), the user client process opens, and initializes with an incoming message from the server a) confirming that the current user is not already logged in on another device, and b) sending the user's current number of unread/total messages. This is one of two communications that the client does not initiate.
+
+### Typical Communications
+For all other communications (aside from incoming messages), the client initiates communication with a request to the server containing the request code and any needed data. Instead of blocking to await server confirmation, we utilize Tkinter's built-in `createfilehandler` function, which binds a custom function to any incoming activity on the server socket. The client maintains a dictionary of pending requests with unique request id's as keys and request types as values. (We generated the request ID with microsecond granularity so that it is ordered and, for most intents and purposes, unique even across consecutive for loop iterations.) After any server request, the client checks every 100ms for a response to a pending request; if successful, it removes the pending request from the dictionary. Subsequent needed actions are carried out in the event handler.
+
+### Incoming Messages
+This socket event handler mitigates the need to constantly check for incoming messages and possibly run into race conditions based on which sections of code happens to handle the response. When the client receives an incoming message on the socket from the server, it immediately handles the request and updates the necessary frontend components to display the message in real time to the user (re-query messages from the server, update number of read/unread messages, etc).
+
+### Logout and Account Deletion
+When the user logs out or deletes their account, the client sends a server request to update the database, and upon confirmation, closes its connection with the server and reconnects using the command-line arguments.
 
 ## DataObjects and Custom Serialization
 We create a universal DataObject to standardize the interface by which the Client and Server communicate, as well as the interface by which the various server-side processes inter-communicate. We also create a MessageObject to store the contents of a single message. Multiple MessageObjects can be placed within a single DataObject. To avoid the redundancy of creating two copies of the same code for the two wire protocol implementations (Custom and JSON), we specify a global constant in Constants.py which dicates whether the wire protocol shall use the JSON or Custom implementation. The DataObject and MessageObject classes contain code that will switch protocols based on this global constant.

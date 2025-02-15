@@ -1,3 +1,6 @@
+'''
+This file contains the flags used by the DataObject class
+'''
 from enum import Enum
 
 class Request(Enum):

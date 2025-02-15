@@ -1,8 +1,12 @@
+'''
+This file contains constants used by the DataObjects Class and DatabaseManager Class
+'''
+
 from pathlib import Path
 
 from Modules.Flags import EncodeType
 
-ENCODE_TYPE = EncodeType.CUSTOM
+ENCODE_TYPE = EncodeType.JSON
 CURRENT_VERSION = "1.0"
 
 PASSWORD_DATABASE = Path(__file__).parent.parent / "User_Data/passwords.db"

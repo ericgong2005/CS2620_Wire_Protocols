@@ -1,11 +1,24 @@
+'''
+File containing tests for the DataObjects.
+
+The total number of tests for each function is 
+included above the function definition.
+
+Remember to switch the Constants.py encode type to 
+test both Custom and Json encodings
+
+In total, if this script is run once on the JSON and
+once on the Custom implementation, there are a total of 
+218 unique test assertions
+'''
+
 from Modules.DataObjects import DataObject, MessageObject, byte_decode, byte_encode
 from Modules.Flags import Request, Status, EncodeType
 from Modules.Constants import ENCODE_TYPE
 
 # Add the value being checked in a loop to asserts as value == value to ensure the value prints out for failed tests
 
-# Remember to switch the Constants.py encode type to test both Custom and Json encodings
-
+# 10 Test Assertions (via Iteration)
 def test_decode_fail():
     # Check invalid encodings throw exceptions
     test_values = [
@@ -28,6 +41,7 @@ def test_decode_fail():
             failed = True
         assert value == value and failed
 
+# 72 Test Assertions (via Iteration)
 def test_single_level_encode_decode():
     # Normal functionality
     test_values = [ # (decoded, encoded)
@@ -58,6 +72,7 @@ def test_single_level_encode_decode():
         assert decoded == decoded and byte_decode(byte_encode(decoded)) == decoded
         assert encoded == encoded and byte_encode(byte_decode(encoded)) == encoded
 
+# 60 Test Assertions (via Iteration)
 def test_multi_level_encode_decode():
     # Encoding encodings and decoding decodings
     test_values = [ # decoded, encoded, double encoded, triple encoded
@@ -90,6 +105,7 @@ def test_multi_level_encode_decode():
         assert (encoded == encoded and decoded == decoded and do_encoded == do_encoded and tri_encoded == tri_encoded and 
                 byte_decode(byte_encode(byte_decode(byte_encode(byte_encode(decoded))))) == encoded)
 
+# 26 Test Assertions (via Iteration)
 def test_DataObject_deserialize_fail():
     # Check invalid serializations throw exceptions
     if ENCODE_TYPE == EncodeType.CUSTOM:
@@ -126,6 +142,7 @@ def test_DataObject_deserialize_fail():
             failed = True
         assert value == value and failed
 
+# 10 Test Assertions (via Iteration)
 def test_get_one():
     if ENCODE_TYPE == EncodeType.CUSTOM:
         test_values = [
@@ -177,6 +194,7 @@ def test_get_one():
     for start, serial, remaining in test_values:
         assert DataObject.get_one(start) == (serial, remaining)
 
+# 28 Test Assertions between JSON and Custom (via Iteration)
 def test_DataObject_serialize_deserialize():
     test_values = [
         DataObject(request=Request.GET_ONLINE_USERS, status=Status.SUCCESS, user="Test"),
@@ -194,6 +212,7 @@ def test_DataObject_serialize_deserialize():
         copy.update(method="serial", serial=request.serialize())
         assert copy.serialize() == request.serialize()
 
+# 12 Test Assertions between JSON and Custom (via Iteration)
 def test_MessageObject_serialize_deserialize():
     test_values = [
         MessageObject(sender="Me", recipient="you", subject="Test", body="Body"),

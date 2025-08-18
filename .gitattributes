@@ -1,2 +1,2 @@
 # Ignore venv in language tally
-venv/* linguist-generated=true
+venv/** linguist-generated=true
